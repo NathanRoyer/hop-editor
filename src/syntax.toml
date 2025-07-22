@@ -1,0 +1,36 @@
+# syntax highlighting:
+# - find strings (configurable start / stop / escapes)
+# - find symbols (explicit list)
+# - find identifiers (configurable glue)
+# - sort identifiers (numbers, keywords, normal)
+# - find function calls
+# - string format (%d, {})
+
+[rust]
+strings-normal = [
+    { start = '"', stop = '"', escape = ['n', 'r', '\'], strfmt-braces = true },
+    { start = "'", stop = "'", escape = ['n', 'r', '\'], single-char = true },
+    { start = 'r#"', stop = '"#', escape = ['n', 'r', '\'], multi-line = true }
+]
+
+multi-line-comments = [
+    { start = '/*', stop = '*/', escape = [], multi-line = true },
+]
+
+comment-prefix = ['//']
+
+symbols = [
+    '&&', '&', '..', '|', '-', '+', '/', '*',
+    '::', ';', '=>', '->', '(', ')', '[', ']',
+    '{', '}', '!', '%', '.', ',', '#', '+=',
+    '-=', '/=', '*=', '|=', '^', '^=', '&=',
+    '<', '>'
+]
+
+identifier-glue = ['_']
+number-glue = ['_']
+numbers = ['dec', 'hex', 'oct', 'bin']
+keywords-strong = ['const', 'mut', 'ref']
+keywords-basic = ['type', 'struct', 'enum']
+keywords-weak = ['let', 'static', 'for', 'while', 'fn']
+call-syms = ['(', '!']
