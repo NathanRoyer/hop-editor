@@ -10,36 +10,57 @@ use std::mem::take;
 use crate::theme::Theme;
 
 const TREE_WIDTH: u16 = 40;
+const TABS_HEIGHT: u16 = 3;
 const MENU_HEIGHT: u16 = 6;
 const LN_WIDTH: usize = 4;
 
-pub type ModeName = &'static str;
+pub enum UserInput {
+    Quit,
+    Insert(char),
+    Backspace,
+    Paste,
+    Copy,
+    Cut,
+    ScrollDown(bool),
+    ScrollUp(bool),
+    Resize(u16, u16),
+    NoOp,
+}
 
-fn cut_len(text: &str, max: usize) -> Option<usize> {
+pub type ModeName = &'static str;
+pub type PartLen = usize;
+pub type TextPart = (ModeName, PartLen);
+
+fn cut_len(text: &str, max: usize) -> (Option<usize>, usize) {
     let mut num_chars = 0;
     let mut len_chars = 0;
 
     for c in text.chars() {
         if num_chars == max {
-            return Some(len_chars);
+            return (Some(len_chars), num_chars);
         }
 
         num_chars += 1;
         len_chars += c.len_utf8();
     }
 
-    None
+    (None, num_chars)
 }
 
 pub struct ColoredText<'a> {
-    parts: &'a [(ModeName, &'a str)],
+    parts: &'a [TextPart],
     theme: &'a Theme,
+    text: &'a str,
     max: usize,
 }
 
 impl<'a> ColoredText<'a> {
-    pub fn new(parts: &'a [(ModeName, &'a str)], theme: &'a Theme) -> Self {
-        Self { parts, theme, max: 0 }
+    pub fn new(
+        parts: &'a [TextPart],
+        text: &'a str,
+        theme: &'a Theme,
+    ) -> Self {
+        Self { parts, theme, text, max: 0 }
     }
 
     fn look_up(&self, name: &str) -> Color {
@@ -52,20 +73,26 @@ impl<'a> ColoredText<'a> {
     }
 }
 
+// todo: rewrite
 impl<'a> fmt::Display for ColoredText<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        for (mode_name, text) in self.parts {
+        let mut offset = 0;
+
+        for (mode_name, len) in self.parts {
+            let end = offset + len;
+            let text = &self.text[offset..end];
             let color = self.look_up(mode_name);
             let tag_a = SetForegroundColor(color);
 
-            if let Some(len) = cut_len(text, self.max) {
-                let text = &text[..len];
+            if let (Some(cut), _) = cut_len(text, self.max) {
                 let tag_b = SetForegroundColor(Color::Reset);
-                write!(f, "{tag_a}{text}{tag_b}…")?;
+                write!(f, "{tag_a}{}{tag_b}…", &text[..cut])?;
                 break;
             } else {
                 write!(f, "{tag_a}{text}")?;
             }
+
+            offset = end;
         }
 
         Ok(())
@@ -106,6 +133,10 @@ impl Interface {
         queue!(self.stdout, RestorePosition).unwrap();
         queue!(self.stdout, Show).unwrap();
         let _ = self.stdout.flush();
+    }
+
+    pub fn code_height(&self) -> u16 {
+        self.height.saturating_sub(TABS_HEIGHT)
     }
 
     fn code_width(&self) -> usize {
@@ -151,6 +182,7 @@ impl Interface {
     }
 
     pub fn write_text<T: fmt::Display>(&mut self, x: u16, y: u16, text: T) {
+        queue!(self.stdout, SetForegroundColor(Color::Reset)).unwrap();
         queue!(self.stdout, MoveTo(x, y)).unwrap();
         let _ = write!(self.stdout, "{}", &text);
         let _ = self.stdout.flush();
@@ -158,26 +190,29 @@ impl Interface {
 
     pub fn set_tree_row(&mut self, index: u16, text: &str) {
         let max = TREE_WIDTH.min(self.width) as usize;
-        let cut = cut_len(text, max).unwrap_or(text.len());
+        let (cut, chars) = cut_len(text, max);
+        let cut = cut.unwrap_or(text.len());
         self.write_text(0, MENU_HEIGHT + 1 + index, &text[..cut]);
+        let _ = write!(self.stdout, "{:1$}", "", max - chars);
 
         // "▶  ▷ ▼     ▽"
 
         let _ = self.stdout.flush();
     }
 
-    pub fn set_code_row(&mut self, index: u16, line_no: u16, mut text: ColoredText) {
+    pub fn set_code_row(&mut self, index: u16, line_no: usize, mut text: ColoredText) {
         let mut buf = take(&mut self.str_buf);
         buf.clear();
         let _ = write!(&mut buf, "{:1$} ", line_no, LN_WIDTH);
 
-        let y = 3 + index;
+        let y = TABS_HEIGHT + index;
         let mut x = TREE_WIDTH + 1;
         self.write_text(x, y, &buf);
 
-        x += LN_WIDTH as u16 + 1;
+        x += LN_WIDTH as u16 + 2;
         text.max = self.width.saturating_sub(x) as usize;
         self.write_text(x, y, text);
+        let _ = queue!(self.stdout, Clear(ClearType::UntilNewLine));
 
         self.str_buf = buf;
         let _ = self.stdout.flush();
@@ -214,16 +249,18 @@ impl Interface {
         todo!()
     }
 
-    pub fn read_events(&mut self) {
-        loop {
-            // `read()` blocks until an `Event` is available
-            match read().unwrap() {
-                Event::Key(event) if event.code == KeyCode::Esc => break,
-                Event::Key(event) => self.set_tree_row(6, &format!(" key = {:?}", event.code)),
-                Event::Mouse(event) => self.set_tree_row(7, &format!(" mouse = {:?}", event.kind)),
-                Event::Resize(w, h) => self.set_tree_row(9, &format!(" rsz = {w}x{h}")),
-                _other => self.set_tree_row(5, " unknown event"),
-            }
+    pub fn read_event(&self) -> UserInput {
+        match read().unwrap() {
+            Event::Key(e) if e.code == KeyCode::Esc => UserInput::Quit,
+            Event::Key(KeyEvent { code: KeyCode::Char(c), .. }) => UserInput::Insert(c),
+            Event::Key(KeyEvent { code: KeyCode::Enter, .. }) => UserInput::Insert('\n'),
+            Event::Key(KeyEvent { code: KeyCode::Backspace, .. }) => UserInput::Backspace,
+            Event::Key(KeyEvent { code: KeyCode::PageDown, .. }) => UserInput::ScrollDown(true),
+            Event::Key(KeyEvent { code: KeyCode::PageUp, .. }) => UserInput::ScrollUp(true),
+            Event::Mouse(e) if e.kind == MouseEventKind::ScrollDown => UserInput::ScrollDown(false),
+            Event::Mouse(e) if e.kind == MouseEventKind::ScrollUp => UserInput::ScrollUp(false),
+            Event::Resize(w, h) => UserInput::Resize(w, h),
+            _other => UserInput::NoOp,
         }
     }
 }

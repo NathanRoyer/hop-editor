@@ -58,7 +58,7 @@ pub struct SyntaxConfig {
 #[derive(Deserialize, Debug)]
 pub struct SyntaxFile {
     #[serde(flatten)]
-    inner: LiteMap<String, SyntaxConfig>,
+    pub inner: LiteMap<String, SyntaxConfig>,
 }
 
 impl SyntaxFile {
