@@ -1,0 +1,28 @@
+
+
+kw-strong = '#ff8888'
+kw-basic = '#ddaa66'
+kw-weak = '#cc8855'
+
+comment = '#cccccc'
+spe-str = '#eecc44'
+string = '#eecc44'
+format = '#eecc44'
+escape = '#eecc44'
+
+ilower = '#a8dbd7'
+imixed = '#cc99ee'
+iupper = '#dd9944'
+
+clower = '#66a4e2'
+cmixed = '#33aa88'
+cupper = '#dd9944'
+
+symbol = '#eeeeee'
+numhex = '#aabb33'
+numdec = '#aabb33'
+numbin = '#aabb33'
+numoct = '#aabb33'
+
+
+
