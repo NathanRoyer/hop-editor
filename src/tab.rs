@@ -1,11 +1,14 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::mem::{swap, take};
-use std::{io, fs};
+use std::{io, fs, cmp};
+use std::sync::Arc;
 
 use crate::syntax::{Range, SyntaxFile};
 use crate::interface::TextPart;
+use crate::confirm;
 
-use litemap::LiteMap;
+const CLOSE_WARNING: &str = "[UNSAVED FILE]\nThis file has unsaved edits!\n- Press Enter to discard the edits.\n- Press Escape to cancel.";
+
+pub type TabList = Vec<(bool, Arc<str>)>;
 
 fn strip_cr<'a>(text: &'a str, eol_cr: &mut bool) -> &'a str {
     let (text, cr) = match text.strip_suffix('\r') {
@@ -17,19 +20,6 @@ fn strip_cr<'a>(text: &'a str, eol_cr: &mut bool) -> &'a str {
     text
 }
 
-static NEXT_KEY: AtomicU64 = AtomicU64::new(0);
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TabKey {
-    inner: u64,
-}
-
-impl TabKey {
-    pub fn new() -> Self {
-        Self { inner: NEXT_KEY.fetch_add(1, Ordering::SeqCst) }
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct Line {
     buffer: String,
@@ -39,41 +29,56 @@ pub struct Line {
 }
 
 pub struct DirtyLine<'a> {
-    pub line_no: usize,
+    pub line_no: Option<usize>,
+    pub cursor: Option<usize>,
     pub text: &'a str,
+}
+
+#[derive(Copy, Clone, Default, PartialEq, Eq)]
+pub struct Cursor {
+    x: usize,
+    y: usize,
+    r: usize,
 }
 
 pub struct Tab {
     file_path: Option<String>,
     tmp_buf: String,
+    name: Arc<str>,
 
     // state
     ranges: Vec<Range>,
     lines: Vec<Line>,
     scroll: isize,
-    target_x: Option<usize>,
-    cursor_x: usize,
-    cursor_y: usize,
-    cursor_r: usize,
+    cursors: Vec<Cursor>,
+    modified: bool,
 
     // settings
-    tab_lang: String,
-    tab_width: usize,
+    tab_lang: Option<String>,
+    _tab_width: usize,
 }
 
 pub struct TabMap {
-    inner: LiteMap<TabKey, Tab>,
-    current: TabKey,
+    inner: Vec<Tab>,
+    current: usize,
 }
 
 impl Line {
     pub fn len_bytes(&self) -> usize {
         self.buffer.len() + (self.eol_cr as usize)
     }
+}
 
-    pub fn len_chars(&self) -> usize {
-        self.buffer.chars().count()
-    }
+fn file_name(path: &Option<String>) -> Arc<str> {
+    let name = match path {
+        Some(path) => match path.rsplit_once('/') {
+            Some((_, name)) => name,
+            None => path,
+        },
+        None => "[unnamed]",
+    };
+
+    name.into()
 }
 
 impl Tab {
@@ -85,64 +90,61 @@ impl Tab {
         let mut line = Line::default();
         range.len = text.len();
         line.dirty = true;
+        let name = file_name(&file_path);
 
         let mut this = Self {
             file_path,
             tmp_buf: String::new(),
+            name,
 
             // state
             ranges: vec![range],
             lines: vec![line],
             scroll: 0,
-            target_x: None,
-            cursor_x: 0,
-            cursor_y: 0,
-            cursor_r: 0,
+            cursors: vec![Cursor::default()],
+            modified: false,
 
             // settings
-            tab_lang: String::from("rust"),
-            tab_width: 4,
+            tab_lang: None,
+            _tab_width: 4,
         };
 
         this.insert_text(&text);
+        this.modified = false;
         this.tmp_buf = text;
 
-        // this.cursor_x = 0;
-        // this.cursor_y = 0;
-        // this.cursor_r = 0;
+        this.cursors[0] = Cursor::default();
 
         this
     }
 
-    fn name(&self) -> &str {
-        match &self.file_path {
-            Some(path) => match path.rsplit_once('/') {
-                Some((_, name)) => name,
-                None => path,
-            },
-            None => "[unnamed]",
-        }
+    fn header(&self) -> (bool, Arc<str>) {
+        (self.modified, self.name.clone())
     }
 
-    fn insert_text_no_lf(&mut self, text: &str) {
-        self.ranges[self.cursor_r].len += text.len();
+    pub fn modified(&self) -> bool {
+        self.modified
+    }
 
-        let line = &mut self.lines[self.cursor_y];
-        line.buffer.insert_str(self.cursor_x, text);
+    fn insert_text_no_lf(&mut self, c: usize, text: &str) {
+        let cursor = &mut self.cursors[c];
+        self.ranges[cursor.r].len += text.len();
+
+        let line = &mut self.lines[cursor.y];
+        line.buffer.insert_str(cursor.x, text);
         line.dirty = true;
 
-        self.cursor_x += text.len();
-        self.target_x.take();
+        cursor.x += text.len();
     }
 
-    fn line_feed(&mut self, mut eol_cr: bool) {
-        let range = &mut self.ranges[self.cursor_r];
+    fn line_feed(&mut self, c: usize, mut eol_cr: bool) {
+        let cursor = &mut self.cursors[c];
+        let range = &mut self.ranges[cursor.r];
         range.len += 1 + (eol_cr as usize);
 
-        let line = &mut self.lines[self.cursor_y];
-        let buffer = line.buffer[self.cursor_x..].into();
+        let line = &mut self.lines[cursor.y];
+        let buffer = line.buffer[cursor.x..].into();
         swap(&mut line.eol_cr, &mut eol_cr);
-        line.dirty = true;
 
         let new_line = Line {
             buffer,
@@ -150,85 +152,170 @@ impl Tab {
             eol_cr,
         };
 
-        line.buffer.truncate(self.cursor_x);
-        self.cursor_y += 1;
-        self.cursor_x = 0;
-        self.target_x.take();
-        self.lines.insert(self.cursor_y, new_line);
+        line.buffer.truncate(cursor.x);
+        let old_y = cursor.y;
+        cursor.y += 1;
+        cursor.x = 0;
+        self.lines.insert(cursor.y, new_line);
+        self.set_lines_dirty(old_y);
     }
 
     pub fn insert_text(&mut self, text: &str) {
-        let mut iter = text.split('\n');
-        let mut eol_cr = false;
+        let cursors = 0..self.cursors.len();
 
-        let part = iter.next().unwrap();
-        let part = strip_cr(part, &mut eol_cr);
-        self.insert_text_no_lf(part);
+        for c in cursors.rev() {
+            let mut iter = text.split('\n');
+            let mut eol_cr = false;
 
-        for part in iter {
-            self.line_feed(eol_cr);
+            let part = iter.next().unwrap();
             let part = strip_cr(part, &mut eol_cr);
-            self.insert_text_no_lf(part);
+            self.insert_text_no_lf(c, part);
+
+            for part in iter {
+                self.line_feed(c, eol_cr);
+                let part = strip_cr(part, &mut eol_cr);
+                self.insert_text_no_lf(c, part);
+            }
+
+            if eol_cr {
+                // does the user want this?
+                // will someone paste something ending in just \r
+                self.insert_text_no_lf(c, "\r");
+            }
         }
 
-        if eol_cr {
-            // does the user want this?
-            // will someone paste something ending in just \r
-            self.insert_text_no_lf("\r");
+        self.modified = true;
+    }
+
+    pub fn insert_char(&mut self, c: char) {
+        let mut buf = [0u8; 4];
+        let text = c.encode_utf8(&mut buf);
+        self.insert_text(text);
+    }
+
+    fn set_lines_dirty(&mut self, from_line: usize) {
+        for line in self.lines.iter_mut().skip(from_line) {
+            line.dirty = true;
         }
     }
 
-    fn merge_with_prev_line(&mut self) -> usize {
-        let prev_y = self
-            .cursor_y
-            .checked_sub(1)
-            .expect("no previous line!");
+    fn merge_with_prev_line(&mut self, c: usize) -> usize {
+        let cursor = &mut self.cursors[c];
 
-        let mut line = self.lines.remove(self.cursor_y);
+        let prev_y = cursor.y.checked_sub(1).expect("no previous line!");
+
+        let mut line = self.lines.remove(cursor.y);
         let buf = take(&mut line.buffer);
 
         let prev = &mut self.lines[prev_y];
-        self.cursor_x += prev.buffer.len();
+        cursor.x += prev.buffer.len();
         prev.buffer += buf.as_str();
+        let eol_cr = prev.eol_cr;
+        cursor.y = prev_y;
 
-        self.cursor_y = prev_y;
-        1 + (prev.eol_cr as usize)
+        self.set_lines_dirty(prev_y);
 
+        1 + (eol_cr as usize)
     }
 
-    pub fn backspace(&mut self, mut bytes: usize) {
-        while self.cursor_x < bytes {
-            bytes -= self.merge_with_prev_line();
+    // note: does not use cursor.r
+    pub fn len_to_cursor(&self, c: usize, num_chars: usize, backward: bool) -> usize {
+        let cursor = &self.cursors[c];
+        let mut y = cursor.y;
+        let line = &self.lines[y];
+
+        let area = match backward {
+            true => &line.buffer[..cursor.x],
+            false => &line.buffer[cursor.x..],
+        };
+
+        let mut chars = area.chars();
+        let mut len_bytes = 0;
+
+        for _ in 0..num_chars {
+            let maybe_c = match backward {
+                true => chars.next_back(),
+                false => chars.next(),
+            };
+
+            let Some(c) = maybe_c else {
+                let next_y = y + 1;
+                let valid = next_y < self.lines.len();
+
+                let maybe_new_y = match backward {
+                    true => y.checked_sub(1),
+                    false => valid.then_some(next_y),
+                };
+
+                let Some(new_y) = maybe_new_y else {
+                    break;
+                };
+
+                y = new_y;
+                let prev_line = line;
+                let line = &self.lines[y];
+                chars = line.buffer.chars();
+
+                let eol_cr = match backward {
+                    true => line.eol_cr,
+                    false => prev_line.eol_cr,
+                };
+
+                len_bytes += 1 + (eol_cr as usize);
+                continue;
+            };
+
+            len_bytes += c.len_utf8();
         }
 
-        let line = &mut self.lines[self.cursor_y];
-        let new_cursor = self.cursor_x - bytes;
-        let range = new_cursor..self.cursor_x;
-        line.buffer.replace_range(range, "");
+        len_bytes
     }
 
-    pub fn dirty_line<'a>(
-        &'a mut self,
-        index: usize,
-        part_buf: &mut Vec<TextPart>,
-    ) -> Option<DirtyLine<'a>> {
+    fn backspace_bytes(&mut self, c: usize, mut bytes: usize) {
+        while self.cursors[c].x < bytes {
+            bytes -= self.merge_with_prev_line(c);
+        }
+
+        let cursor = &mut self.cursors[c];
+        let new_x = cursor.x - bytes;
+        let range = new_x..cursor.x;
+
+        let line = &mut self.lines[cursor.y];
+        line.buffer.replace_range(range, "");
+        line.dirty = true;
+
+        cursor.x = new_x;
+    }
+
+    pub fn backspace_once(&mut self) {
+        let cursors = 0..self.cursors.len();
+
+        for c in cursors.rev() {
+            let len = self.len_to_cursor(c, 1, true);
+            self.backspace_bytes(c, len);
+        }
+
+        self.modified = true;
+    }
+
+    pub fn dirty_line<'a>(&'a mut self, index: u16, part_buf: &mut Vec<TextPart>) -> Option<DirtyLine<'a>> {
         let y = self.scroll + (index as isize);
         part_buf.clear();
 
         let Ok(y) = usize::try_from(y) else {
             part_buf.push(("wspace", 0));
-            return Some(DirtyLine { line_no: 0, text: "" });
+            return Some(DirtyLine { line_no: None, cursor: None, text: "" });
         };
 
         let Some(line) = self.lines.get_mut(y) else {
             part_buf.push(("wspace", 0));
-            return Some(DirtyLine { line_no: 0, text: "" });
+            return Some(DirtyLine { line_no: None, cursor: None, text: "" });
         };
 
         let dirty = take(&mut line.dirty);
 
         if dirty {
-            let (r, mut o) = self.range_at_line(y);
+            let (r, mut o) = self.range_at(0, y);
 
             let text = &self.lines[y].buffer;
             let mut remaining = text.len();
@@ -245,50 +332,52 @@ impl Tab {
                 }
             }
 
-            Some(DirtyLine { line_no: y + 1, text })
+            let cursor = self.cursors.iter().find(|c| c.y == y).map(|c| c.x);
+            let line_no = Some(y + 1);
+
+            Some(DirtyLine { line_no, cursor, text })
         } else {
             None
         }
     }
 
-    fn range_at_line(&self, index: usize) -> (usize, usize) {
+    fn range_at(&self, x: usize, y: usize) -> (usize, usize) {
         let mut iter = self.ranges.iter();
         let mut range = *iter.next().expect("should not happen");
         let mut offset = 0;
         let mut i = 0;
 
-        // for each line before this one
-        for line in self.lines.iter().take(index) {
-            let mut len_crlf = line.len_bytes() + 1;
-            range.len -= offset;
-
-            while len_crlf >= range.len {
+        let mut advance = |mut n: usize| {
+            while n > (range.len - offset) {
                 i += 1;
-                len_crlf -= range.len;
+                n -= range.len - offset;
 
                 match iter.next() {
                     Some(r) => range = *r,
                     None => break,
                 }
+
+                offset = 0;
             }
 
-            offset = len_crlf;
+            offset += n;
+        };
+
+        // for each line before this one
+        for line in self.lines.iter().take(y) {
+            advance(line.len_bytes() + 1);
         }
+
+        advance(x);
 
         (i, offset)
     }
 
-    // returns cursor offset in tmp_buf
-    fn rebuild(&mut self) -> usize {
+    fn rebuild(&mut self) {
         self.tmp_buf.clear();
-        let mut cursor_o = 0;
 
-        for (y, line) in self.lines.iter().enumerate() {
+        for line in &self.lines {
             self.tmp_buf += &line.buffer;
-
-            if y == self.cursor_y {
-                cursor_o = self.tmp_buf.len() + self.cursor_x;
-            }
 
             if line.eol_cr {
                 self.tmp_buf.push('\r');
@@ -300,8 +389,6 @@ impl Tab {
         if !self.lines.is_empty() {
             self.tmp_buf.pop();
         }
-
-        cursor_o
     }
 
     pub fn error(&mut self, message: String) {
@@ -309,66 +396,307 @@ impl Tab {
     }
 
     pub fn highlight(&mut self, syntaxes: &SyntaxFile) {
-        let Some(syntax) = syntaxes.get(&self.tab_lang) else {
+        if self.tab_lang.is_none() {
+            let Some(path) = &self.file_path else {
+                return;
+            };
+
+            let Some((_, ext)) = path.rsplit_once('.') else {
+                return;
+            };
+
+            self.tab_lang = syntaxes.resolve_ext(ext).map(String::from);
+        }
+
+        let Some(lang) = &self.tab_lang else {
+            return;
+        };
+
+        let Some(syntax) = syntaxes.get(lang) else {
             let valids: Vec<_> = syntaxes.inner.keys().collect();
             self.error(format!("valid syntaxes: {valids:?}"));
             return;
         };
 
-        let mut cursor_o = self.rebuild();
+        self.rebuild();
         self.ranges = syntax.highlight(&self.tmp_buf);
+        let cursors = 0..self.cursors.len();
+        cursors.for_each(|c| self.recompute_cursor_range(c));
 
-        for (i, range) in self.ranges.iter().enumerate() {
-            if cursor_o < range.len {
-                self.cursor_r = i;
-                break;
-            } else {
-                cursor_o -= range.len;
+        if false {
+            let mut dump = String::new();
+            let mut start = 0;
+            for range in &self.ranges.clone() {
+                let stop = start + range.len;
+                dump += &format!("{} {}: {}\n", range.mode.as_str(), range.len, &self.tmp_buf[start..stop]);
+                start = stop;
             }
+
+            fs::write("dump.txt", dump).unwrap();
+        }
+    }
+
+    pub fn recompute_cursor_range(&mut self, c: usize) {
+        let cursor = self.cursors[c];
+        self.cursors[c].r = self.range_at(cursor.x, cursor.y).0;
+    }
+
+    pub fn check_overscroll(&mut self, code_height: u16) {
+        let max = self.lines.len().saturating_sub(1) as isize;
+
+        if self.scroll > max {
+            self.scroll = max;
         }
 
-        let mut dump = String::new();
-        let mut start = 0;
-        for range in &self.ranges.clone() {
-            let stop = start + range.len;
-            dump += &format!("{} {}: {}\n", range.mode.as_str(), range.len, &self.tmp_buf[start..stop]);
-            start = stop;
-        }
+        let max = code_height.saturating_sub(1) as isize;
 
-        fs::write("dump.txt", dump).unwrap();
+        if self.scroll < -max {
+            self.scroll = -max;
+        }
     }
 
     pub fn scroll(&mut self, delta: isize) {
         self.scroll += delta;
-        self.lines.iter_mut().for_each(|l| l.dirty = true);
+        self.set_lines_dirty(0);
+    }
+
+    pub fn vertical_jump(&mut self, delta: isize) {
+        let cursors = 0..self.cursors.len();
+
+        for c in cursors.rev() {
+            let cursor = self.cursors[c];
+            let line = &self.lines[cursor.y].buffer;
+            let x = line[..cursor.x].chars().count();
+
+            let y = cursor.y as isize + delta;
+            if let Ok(y) = usize::try_from(y) {
+                if y < self.lines.len() {
+                    self.seek_in_line(c, y, x);
+                }
+            }
+        }
+
+        self.check_cursors();
+    }
+
+    // warning: does not maintain cursor.r
+    fn backoff_cursor_once(&mut self, c: usize) {
+        let cursor = &mut self.cursors[c];
+
+        if cursor.x != 0 {
+            self.cursors[c].x -= self.len_to_cursor(c, 1, true);
+        } else if cursor.y != 0 {
+            cursor.y -= 1;
+            let line = &self.lines[cursor.y].buffer;
+            cursor.x = line.len();
+        }
+    }
+
+    // warning: does not maintain cursor.r
+    fn advance_cursor_once(&mut self, c: usize) {
+        let next_char_len = self.len_to_cursor(c, 1, false);
+        let cursor = &mut self.cursors[c];
+
+        let line = &self.lines[cursor.y].buffer;
+        let next_x = cursor.x + next_char_len;
+        let next_y = cursor.y + 1;
+        let lines = self.lines.len();
+
+        let has_next_line = next_y < lines;
+        let overflow = cursor.x >= line.len();
+
+        if overflow & has_next_line {
+            cursor.x = 0;
+            cursor.y = next_y;
+        } else if !overflow {
+            cursor.x = next_x;
+        }
+    }
+
+    pub fn horizontal_jump(&mut self, delta: isize) {
+        let cursors = 0..self.cursors.len();
+        type Sig = (usize, fn(&mut Tab, usize));
+
+        let (num_iter, callback): Sig = match delta < 0 {
+            true => ((-delta) as usize, Self::backoff_cursor_once),
+            false => (delta as usize, Self::advance_cursor_once),
+        };
+
+        for c in cursors.rev() {
+            for _ in 0..num_iter {
+                let y = self.cursors[c].y;
+                self.lines[y].dirty = true;
+                callback(self, c);
+            }
+
+            let y = self.cursors[c].y;
+            self.lines[y].dirty = true;
+            self.recompute_cursor_range(c);
+        }
+
+        self.check_cursors();
+    }
+
+    fn seek_in_line(&mut self, c: usize, y: usize, char_offset: usize) {
+        let cursor = &mut self.cursors[c];
+        self.lines[cursor.y].dirty = true;
+        cursor.x = self
+            .lines[y]
+            .buffer
+            .chars()
+            .take(char_offset)
+            .map(|c| c.len_utf8())
+            .sum();
+
+        cursor.y = y;
+        self.lines[y].dirty = true;
+        self.recompute_cursor_range(c);
+    }
+
+    pub fn seek(&mut self, x: u16, y: u16, append: bool) {
+        let max_y = self.lines.len() as isize;
+        let y = y as isize + self.scroll;
+
+        if (y < 0) || (y >= max_y) {
+            return;
+        }
+
+        if !append {
+            for cursor in &self.cursors {
+                self.lines[cursor.y].dirty = true;
+            }
+
+            self.cursors.clear();
+        }
+
+        let c = self.cursors.len();
+        self.cursors.push(Cursor::default());
+        self.seek_in_line(c, y as usize, x as usize);
+        self.check_cursors();
+    }
+
+    pub fn check_cursors(&mut self) {
+        self.cursors.sort();
+        self.cursors.dedup();
+    }
+
+    pub fn set_fully_dirty(&mut self) {
+        self.set_lines_dirty(0);
+    }
+
+    pub fn save(&mut self) {
+        self.rebuild();
+
+        let Some(path) = &self.file_path else {
+            confirm!("[ERROR]\ncannot save: tab has no underlying file");
+            return;
+        };
+
+        if fs::write(path, &self.tmp_buf).is_ok() {
+            self.modified = false;
+        }
     }
 }
 
 impl TabMap {
     pub fn new() -> Self {
-        let current = TabKey::new();
-        let tabs = [(current, Tab::new(None, String::new()))];
-
         Self {
-            inner: LiteMap::from_iter(tabs.into_iter()),
-            current,
+            inner: vec![Tab::new(None, String::new())],
+            current: 0,
         }
     }
 
-    pub fn tab_list(&self) -> Vec<&str> {
-        self.inner.values().map(Tab::name).collect()
+    pub fn update_tab_list(&self, storage: &mut TabList) -> usize {
+        storage.clear();
+
+        for tab in &self.inner {
+            storage.push(tab.header());
+        }
+
+        self.current
     }
 
     pub fn current(&mut self) -> &mut Tab {
-        &mut self.inner[&self.current]
+        &mut self.inner[self.current]
     }
 
     pub fn open(&mut self, file_path: String) -> Result<(), io::Error> {
-        let new_key = TabKey::new();
+        let tab = self.current();
+        if tab.file_path.is_none() && !tab.modified {
+            self.inner.remove(self.current);
+        }
+
+        for (index, tab) in self.inner.iter().enumerate() {
+            if tab.file_path.as_ref() == Some(&file_path) {
+                self.current = index;
+                self.current().set_fully_dirty();
+                return Ok(());
+            }
+        }
+
         let tmp_buf = fs::read_to_string(&file_path)?;
         let tab = Tab::new(Some(file_path), tmp_buf);
-        self.inner.insert(new_key, tab);
-        self.current = new_key;
+        self.current = self.inner.len();
+        self.inner.push(tab);
+
         Ok(())
+    }
+
+    pub fn close(&mut self, index: Option<usize>) {
+        let index = index.unwrap_or(self.current);
+
+        if self.inner[index].modified && !confirm!("{}", CLOSE_WARNING) {
+            return;
+        }
+
+        self.inner.remove(index);
+
+        if self.inner.len() == 0 {
+            let tab = Tab::new(None, String::new());
+            self.inner.push(tab);
+        }
+
+        if self.current == self.inner.len() {
+            self.current -= 1;
+        }
+
+        self.current().set_fully_dirty();
+    }
+
+    pub fn next_tab(&mut self, leftward: bool) {
+        let p = self.current + 1;
+        let max = self.inner.len().saturating_sub(1);
+
+        let (next, teleport) = match leftward {
+            true => ((p <= max).then_some(p), 0),
+            false => (self.current.checked_sub(1), max),
+        };
+
+        self.current = next.unwrap_or(teleport);
+        self.current().set_fully_dirty();
+    }
+
+    pub fn switch(&mut self, index: usize) {
+        self.current = index;
+        self.current().set_fully_dirty();
+    }
+
+    pub fn all_saved(&self) -> bool {
+        self.inner.iter().all(|t| !t.modified)
+    }
+}
+
+impl PartialOrd for Cursor {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Cursor {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        match self.y != other.y {
+            true => self.y.cmp(&other.y),
+            false => self.x.cmp(&other.x),
+        }
     }
 }

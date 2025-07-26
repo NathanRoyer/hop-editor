@@ -1,3 +1,4 @@
+use crossterm::style::Color;
 use hex_color::HexColor;
 use serde::Deserialize;
 use litemap::LiteMap;
@@ -22,5 +23,14 @@ impl Theme {
 
     pub fn get(&self, key: &str) -> Option<HexColor> {
         self.inner.get(key).copied()
+    }
+
+    pub fn get_ansi(&self, name: &str) -> Color {
+        type Rgb = (u8, u8, u8);
+
+        match self.get(name) {
+            Some(hc) => Color::from(Rgb::from(hc)),
+            None => Color::Reset,
+        }
     }
 }

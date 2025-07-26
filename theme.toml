@@ -1,4 +1,4 @@
-
+# todo: improve this theme
 
 kw-strong = '#ff8888'
 kw-basic = '#ddaa66'
@@ -24,5 +24,6 @@ numdec = '#aabb33'
 numbin = '#aabb33'
 numoct = '#aabb33'
 
+hover-bg = '#444444'
 
 

@@ -37,6 +37,7 @@ pub struct StringConfig {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct SyntaxConfig {
+    extension: String,
     strings_normal: Vec<StringConfig>,
 
     #[serde(default)]
@@ -74,6 +75,14 @@ impl SyntaxFile {
 
     pub fn get(&self, syntax_name: &str) -> Option<&SyntaxConfig> {
         self.inner.get(syntax_name)
+    }
+
+    pub fn resolve_ext(&self, extension: &str) -> Option<&str> {
+        self
+            .inner
+            .iter()
+            .find(|(_, s)| s.extension == extension)
+            .map(|(n, _)| n.as_str())
     }
 }
 
@@ -223,7 +232,12 @@ impl SyntaxConfig {
 
         // todo: tag string formats and escapes
 
-        let vec = state.ranges.into_tuple_vec();
+        let mut vec = state.ranges.into_tuple_vec();
+
+        if vec.is_empty() {
+            vec.push((0, Range::default()));
+        }
+
         vec.into_iter().map(|(_, r)| r).collect()
     }
 

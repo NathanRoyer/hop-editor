@@ -7,6 +7,7 @@
 # - string format (%d, {})
 
 [rust]
+extension = "rs"
 strings-normal = [
     { start = '"', stop = '"', escape = ['n', 'r', '\', "\n"], multi-line = true, strfmt-braces = true },
     { start = "'", stop = "'", escape = ['n', 'r', '\'], single-char = true },
@@ -35,6 +36,7 @@ keywords-weak = ['self', 'let', 'static', 'for', 'while', 'if', 'match', 'fn']
 call-syms = ['(', '!', '<']
 
 [toml]
+extension = "toml"
 strings-normal = [
     { start = "'", stop = "'", escape = [] },
     { start = "'''", stop = "'''", escape = [], multi-line = true },
