@@ -27,6 +27,8 @@ pub enum UserInput {
     NextTab(bool),
     Insert(char),
     CodeSeek(u16, u16, bool),
+    CodeDrag(u16, u16),
+    ClearDrag,
     TreeClick(u16),
     TreeHover(u16),
     TabHover(u16),
@@ -43,16 +45,32 @@ pub enum UserInput {
     NoOp,
 }
 
+#[derive(Debug)]
+enum Location {
+    PanelSep,
+    Menu,
+    MenuEdge,
+    TreeRow(u16),
+    Tab(u16),
+    LineNo(u16),
+    Code(u16, u16),
+}
+
 pub type ModeName = &'static str;
 pub type PartLen = usize;
 pub type TextPart = (ModeName, PartLen);
 
+// todo get rid
 fn cut_len(text: &str, max: usize) -> (Option<usize>, usize) {
     let mut num_chars = 0;
     let mut len_chars = 0;
 
     for c in text.chars() {
-        let next = num_chars + 1;
+        let next = num_chars + match c {
+            // todo use var
+            '\t' => 4,
+            _ => 1,
+        };
 
         if next == max {
             return (Some(len_chars), num_chars);
@@ -70,6 +88,7 @@ pub struct ColoredText<'a> {
     cursors: &'a [usize],
     theme: &'a Theme,
     text: &'a str,
+    tab_width_m1: usize,
     max: usize,
 }
 
@@ -78,10 +97,17 @@ impl<'a> ColoredText<'a> {
         parts: &'a [TextPart],
         cursors: &'a [usize],
         text: &'a str,
+        tab_width_m1: usize,
         theme: &'a Theme,
     ) -> Self {
-        Self { parts, theme, text, cursors, max: 0 }
+        Self { parts, theme, text, cursors, tab_width_m1, max: 0 }
     }
+}
+
+fn write_rev(f: &mut fmt::Formatter, c: char) -> Result<(), fmt::Error> {
+    let rev1 = SetAttribute(Attribute::Reverse);
+    let rev2 = SetAttribute(Attribute::NoReverse);
+    write!(f, "{rev1}{c}{rev2}")
 }
 
 fn write_text_cursor(
@@ -90,55 +116,74 @@ fn write_text_cursor(
     cursors: &[usize],
     color: Color,
     mut offset: usize,
-    mut text: &str,
-) -> Result<(), fmt::Error> {
-    let tag_a = SetForegroundColor(color);
+    text: &str,
+    num_chars: &mut usize,
+    tab_width_m1: usize,
+    max: usize,
+) -> Result<bool, fmt::Error> {
+    write!(f, "{}", SetForegroundColor(color))?;
+    let mut cursors = cursors.iter();
+    let mut cursor = cursors.next();
 
-    for cursor in cursors {
-        if let Some(prefix_len) = cursor.checked_sub(offset) {
-            if prefix_len < text.len() {
-                let (prefix_str, rest) = text.split_at(prefix_len);
-                let middle_char = rest.chars().next().unwrap();
-                let charlene = middle_char.len_utf8();
-                offset += prefix_len + charlene;
-                text = &rest[charlene..];
+    for c in text.chars() {
+        let mut c_disp = c;
+        let mut addition = 1;
 
-                let tag_b = SetAttribute(Attribute::Reverse);
-                let tag_c = SetAttribute(Attribute::NoReverse);
-
-                write!(f, "{tag_a}{prefix_str}")?;
-                write!(f, "{tag_b}{middle_char}{tag_c}")?;
-            }
+        if c == '\t' {
+            addition += tab_width_m1;
+            c_disp = ' ';
         }
+
+        if *num_chars + addition >= max {
+            return Ok(true);
+        }
+
+        if Some(offset) == cursor.copied() {
+            cursor = cursors.next();
+            write_rev(f, c_disp)?;
+        } else {
+            write!(f, "{c_disp}")?;
+        }
+
+        if c == '\t' {
+            let _ = write!(f, "{:^1$}", "", tab_width_m1);
+        }
+
+        *num_chars += addition;
+        offset += c.len_utf8();
     }
 
-    write!(f, "{tag_a}{text}")
+    Ok(false)
 }
 
 impl<'a> fmt::Display for ColoredText<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let mut overflow = false;
-        let mut max = self.max;
         let mut offset = 0;
+        let mut chars = 0;
 
         for (mode_name, len) in self.parts {
             let end = offset + len;
             let text = &self.text[offset..end];
             let color = self.theme.get_ansi(mode_name);
 
-            if let (Some(cut), _) = cut_len(text, max) {
-                let text = &text[..cut];
-                let tag_b = SetForegroundColor(Color::Reset);
-                write_text_cursor(f, self.cursors, color, offset, text)?;
-                write!(f, "{tag_b}…")?;
-                overflow = true;
+            overflow = write_text_cursor(
+                f,
+                self.cursors,
+                color,
+                offset,
+                text,
+                &mut chars,
+                self.tab_width_m1,
+                self.max,
+            )?;
+
+            if overflow {
+                write!(f, "{}…", SetForegroundColor(Color::Reset))?;
                 break;
-            } else {
-                write_text_cursor(f, self.cursors, color, offset, text)?;
             }
 
             offset = end;
-            max = max.saturating_sub(*len);
         }
 
         if self.cursors.contains(&offset) {
@@ -146,9 +191,7 @@ impl<'a> fmt::Display for ColoredText<'a> {
                 write!(f, "{}", MoveLeft(1))?;
             }
 
-            let tag_b = SetAttribute(Attribute::Reverse);
-            let tag_c = SetAttribute(Attribute::NoReverse);
-            write!(f, "{tag_b} {tag_c}")?;
+            write_rev(f, ' ')?;
         }
 
         Ok(())
@@ -384,35 +427,26 @@ impl Interface {
         None
     }
 
-    fn on_mouse_event(&self, mut x: u16, mut y: u16, ctrl: bool) -> [UserInput; 2] {
+    fn cursor_pos(&self, x: u16, y: u16) -> Location {
         let code_x = TREE_WIDTH + (LN_WIDTH as u16) + 3;
         let tree_y = MENU_HEIGHT + 1;
 
         if x == TREE_WIDTH {
-            [UserInput::NoOp, UserInput::ClearHover]
+            Location::PanelSep
         } else if x < TREE_WIDTH {
-            // left panel
             if y < MENU_HEIGHT {
-                // menu
-                [UserInput::NoOp, UserInput::ClearHover]
+                Location::Menu
             } else if y >= tree_y {
-                // tree
-                y -= tree_y;
-                [UserInput::TreeClick(y), UserInput::TreeHover(y)]
+                Location::TreeRow(y - tree_y)
             } else {
-                // on menu edge
-                [UserInput::NoOp, UserInput::ClearHover]
+                Location::MenuEdge
             }
         } else if y < 3 {
-            // tabs
-            x = x - TREE_WIDTH - 1;
-            [UserInput::TabClick(x), UserInput::TabHover(x)]
+            Location::Tab(x - TREE_WIDTH - 1)
         } else if x < code_x {
-            // line numbers
-            [UserInput::NoOp, UserInput::ClearHover]
+            Location::LineNo(y - 3)
         } else {
-            // in code
-            [UserInput::CodeSeek(x - code_x, y - 3, ctrl), UserInput::ClearHover]
+            Location::Code(x - code_x, y - 3)
         }
     }
 
@@ -454,25 +488,58 @@ impl Interface {
                 }
             },
             Event::Mouse(e) => {
+                use {MouseEventKind::*, MouseButton::*};
                 let ctrl = e.modifiers.contains(KeyModifiers::CONTROL);
-                let events = self.on_mouse_event(e.column, e.row, ctrl);
+                let pos = self.cursor_pos(e.column, e.row);
+                let debug = || {
+                    confirm!("invalid action:\n- event: {e:?}\n- pos: {pos:?}");
+                    UserInput::NoOp
+                };
 
-                if ctrl {
-                    match e.kind {
-                        MouseEventKind::Down(MouseButton::Left) => events[0],
-                        MouseEventKind::Moved => events[1],
-                        MouseEventKind::Up(_) => UserInput::NoOp,
-                        _ => (confirm!("unk-ev: {e:?}"), UserInput::NoOp).1,
-                    }
-                } else {
-                    match e.kind {
+                match pos {
+                    Location::Code(x, y) => match e.kind {
                         MouseEventKind::ScrollDown => UserInput::Scroll(1),
                         MouseEventKind::ScrollUp => UserInput::Scroll(-1),
-                        MouseEventKind::Down(MouseButton::Left) => events[0],
-                        MouseEventKind::Moved => events[1],
+                        Down(Left) => UserInput::CodeSeek(x, y, ctrl),
+                        Drag(Left) => UserInput::CodeDrag(x, y),
+                        MouseEventKind::Up(_) => UserInput::ClearDrag,
+                        Moved => UserInput::ClearHover,
+                        _ => debug(),
+                    },
+                    Location::TreeRow(y) => match e.kind {
+                        MouseEventKind::ScrollDown => UserInput::Scroll(1),
+                        MouseEventKind::ScrollUp => UserInput::Scroll(-1),
                         MouseEventKind::Up(_) => UserInput::NoOp,
-                        _ => (confirm!("unk-ev: {e:?}"), UserInput::NoOp).1,
-                    }
+                        Down(Left) => UserInput::TreeClick(y),
+                        Moved => UserInput::TreeHover(y),
+                        _ => debug(),
+                    },
+                    Location::Tab(x) => match e.kind {
+                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        Down(Left) => UserInput::TabClick(x),
+                        Moved => UserInput::TabHover(x),
+                        _ => debug(),
+                    },
+                    Location::LineNo(y) => match e.kind {
+                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        Moved => UserInput::ClearHover,
+                        _ => debug(),
+                    },
+                    Location::PanelSep => match e.kind {
+                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        Moved => UserInput::ClearHover,
+                        _ => debug(),
+                    },
+                    Location::MenuEdge => match e.kind {
+                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        Moved => UserInput::ClearHover,
+                        _ => debug(),
+                    },
+                    Location::Menu => match e.kind {
+                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        Moved => UserInput::ClearHover,
+                        _ => debug(),
+                    },
                 }
             },
             Event::Resize(w, h) => UserInput::Resize(w, h),

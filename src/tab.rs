@@ -30,6 +30,7 @@ pub struct Line {
 
 pub struct DirtyLine<'a> {
     pub line_no: Option<usize>,
+    pub tab_width_m1: usize,
     pub text: &'a str,
 }
 
@@ -54,7 +55,7 @@ pub struct Tab {
 
     // settings
     tab_lang: Option<String>,
-    _tab_width: usize,
+    tab_width_m1: usize,
 }
 
 pub struct TabMap {
@@ -105,7 +106,7 @@ impl Tab {
 
             // settings
             tab_lang: None,
-            _tab_width: 4,
+            tab_width_m1: 3,
         };
 
         this.insert_text(&text);
@@ -273,7 +274,7 @@ impl Tab {
 
     pub fn backspace_once(&mut self) {
         for c in 0..self.cursors.len() {
-            let len = self.len_to_cursor(c, 1, false);
+            let len = self.len_to_cursor(c, -1);
             self.backspace_bytes(c, len);
         }
 
@@ -281,7 +282,9 @@ impl Tab {
     }
 
     // note: does not use cursor.r
-    pub fn len_to_cursor(&self, c: usize, num_chars: usize, forward: bool) -> usize {
+    pub fn len_to_cursor(&self, c: usize, num_chars: isize) -> usize {
+        let forward = num_chars >= 0;
+        let num_chars = num_chars.abs() as usize;
         let cursor = &self.cursors[c];
         let mut y = cursor.y;
         let line = &self.lines[y];
@@ -341,17 +344,18 @@ impl Tab {
         cursors: &mut Vec<usize>,
     ) -> Option<DirtyLine<'a>> {
         let y = self.scroll + (index as isize);
+        let tab_width_m1 = self.tab_width_m1;
         part_buf.clear();
         cursors.clear();
 
         let Ok(y) = usize::try_from(y) else {
             part_buf.push(("wspace", 0));
-            return Some(DirtyLine { line_no: None, text: "" });
+            return Some(DirtyLine { line_no: None, tab_width_m1, text: "" });
         };
 
         let Some(line) = self.lines.get_mut(y) else {
             part_buf.push(("wspace", 0));
-            return Some(DirtyLine { line_no: None, text: "" });
+            return Some(DirtyLine { line_no: None, tab_width_m1, text: "" });
         };
 
         // return if not dirty
@@ -382,7 +386,7 @@ impl Tab {
         cursors.extend(iter_c);
         let line_no = Some(y + 1);
 
-        Some(DirtyLine { line_no, text })
+        Some(DirtyLine { line_no, tab_width_m1, text })
     }
 
     fn range_at(&self, x: usize, y: usize) -> (usize, usize) {
@@ -502,9 +506,14 @@ impl Tab {
 
     pub fn vertical_jump(&mut self, delta: isize) {
         for c in 0..self.cursors.len() {
+            let char_w = |c| match c {
+                '\t' => self.tab_width_m1 + 1,
+                _ => 1,
+            };
+
             let cursor = self.cursors[c];
             let line = &self.lines[cursor.y].buffer;
-            let x = line[..cursor.x].chars().count();
+            let x = line[..cursor.x].chars().map(char_w).sum();
 
             let y = cursor.y as isize + delta;
             if let Ok(y) = usize::try_from(y) {
@@ -522,7 +531,7 @@ impl Tab {
         let cursor = &mut self.cursors[c];
 
         if cursor.x != 0 {
-            self.cursors[c].x -= self.len_to_cursor(c, 1, false);
+            self.cursors[c].x -= self.len_to_cursor(c, -1);
         } else if cursor.y != 0 {
             cursor.y -= 1;
             let line = &self.lines[cursor.y].buffer;
@@ -532,7 +541,7 @@ impl Tab {
 
     // warning: does not maintain cursor.r
     fn advance_cursor_once(&mut self, c: usize) {
-        let next_char_len = self.len_to_cursor(c, 1, true);
+        let next_char_len = self.len_to_cursor(c, 1);
         let cursor = &mut self.cursors[c];
 
         let line = &self.lines[cursor.y].buffer;
@@ -574,17 +583,26 @@ impl Tab {
         self.check_cursors();
     }
 
-    fn seek_in_line(&mut self, c: usize, y: usize, char_offset: usize) {
+    fn seek_in_line(&mut self, c: usize, y: usize, mut x_char: usize) {
         let cursor = &mut self.cursors[c];
         self.lines[cursor.y].dirty = true;
+        let line = &self.lines[y].buffer;
+        cursor.x = 0;
 
-        cursor.x = self
-            .lines[y]
-            .buffer
-            .chars()
-            .take(char_offset)
-            .map(|c| c.len_utf8())
-            .sum();
+        for (i, c) in line.chars().enumerate() {
+            if i >= x_char {
+                break;
+            }
+
+            if c == '\t' {
+                match x_char.checked_sub(self.tab_width_m1 + 1) {
+                    Some(n) => x_char = n,
+                    None => break,
+                }
+            }
+
+            cursor.x += c.len_utf8();
+        }
 
         cursor.y = y;
         self.lines[y].dirty = true;
