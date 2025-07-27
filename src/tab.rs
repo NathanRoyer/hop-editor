@@ -28,6 +28,12 @@ pub struct Line {
     dirty: bool,
 }
 
+impl Line {
+    fn len_chars(&self) -> usize {
+        self.buffer.chars().count()
+    }
+}
+
 pub struct DirtyLine<'a> {
     pub line_no: Option<usize>,
     pub tab_width_m1: usize,
@@ -36,9 +42,21 @@ pub struct DirtyLine<'a> {
 
 #[derive(Copy, Clone, Default, PartialEq, Eq)]
 pub struct Cursor {
+    // x is in char unit, not byte
     x: usize,
     y: usize,
-    r: usize,
+    range: usize,
+}
+
+impl Cursor {
+    pub fn byte_offset(&self, line: &Line) -> usize {
+        line
+            .buffer
+            .chars()
+            .take(self.x)
+            .map(|c| c.len_utf8())
+            .sum()
+    }
 }
 
 pub struct Tab {
@@ -149,10 +167,11 @@ impl Tab {
 
     fn insert_text_no_lf(&mut self, c: usize, text: &str) {
         let cursor = &mut self.cursors[c];
-        self.ranges[cursor.r].len += text.len();
+        self.ranges[cursor.range].len += text.len();
 
         let line = &mut self.lines[cursor.y];
-        line.buffer.insert_str(cursor.x, text);
+        let x_bytes = cursor.byte_offset(line);
+        line.buffer.insert_str(x_bytes, text);
         line.dirty = true;
 
         self.add_to_cursors(c, false, text.len());
@@ -160,13 +179,14 @@ impl Tab {
 
     fn line_feed(&mut self, c: usize, mut eol_cr: bool) {
         let cursor = &self.cursors[c];
-        let range = &mut self.ranges[cursor.r];
+        let range = &mut self.ranges[cursor.range];
         range.len += 1 + (eol_cr as usize);
 
         let line = &mut self.lines[cursor.y];
         swap(&mut line.eol_cr, &mut eol_cr);
-        let buffer = line.buffer[cursor.x..].into();
-        line.buffer.truncate(cursor.x);
+        let x_bytes = cursor.byte_offset(line);
+        let buffer = line.buffer[x_bytes..].into();
+        line.buffer.truncate(x_bytes);
 
         let new_line = Line {
             buffer,
@@ -238,7 +258,7 @@ impl Tab {
         }
     }
 
-    fn merge_with_prev_line(&mut self, c: usize) -> usize {
+    fn merge_with_prev_line(&mut self, c: usize) {
         let this_y = self.cursors[c].y;
         let prev_y = this_y.checked_sub(1).expect("no previous line!");
 
@@ -246,95 +266,40 @@ impl Tab {
         let buf = take(&mut line.buffer);
 
         let prev = &mut self.lines[prev_y];
-        let line_extra = prev.buffer.len();
+        let x_add = prev.len_chars();
         prev.buffer += buf.as_str();
-        let eol_cr = prev.eol_cr;
 
         self.set_lines_dirty(prev_y);
-        self.backspace_cursor(c, true, line_extra as isize);
-
-        1 + (eol_cr as usize)
+        self.backspace_cursor(c, true, x_add as isize);
     }
 
-    fn backspace_bytes(&mut self, c: usize, mut bytes: usize) {
-        while self.cursors[c].x < bytes {
-            bytes -= self.merge_with_prev_line(c);
+    // does not try to correct the range... i feel like it's ok
+    fn backspace(&mut self, c: usize, mut num_chars: usize) {
+        while self.cursors[c].x < num_chars {
+            self.merge_with_prev_line(c);
+            num_chars -= 1;
         }
 
-        let cursor = self.cursors[c];
-        let new_x = cursor.x - bytes;
-        let range = new_x..cursor.x;
-
+        // mutable copy! not mut ref
+        let mut cursor = self.cursors[c];
         let line = &mut self.lines[cursor.y];
-        line.buffer.replace_range(range, "");
+
+        let old_i = cursor.byte_offset(line);
+        cursor.x -= num_chars;
+        let new_i = cursor.byte_offset(line);
+
+        line.buffer.replace_range(new_i..old_i, "");
         line.dirty = true;
 
-        self.backspace_cursor(c, false, -(bytes as isize));
+        self.backspace_cursor(c, false, -(num_chars as isize));
     }
 
     pub fn backspace_once(&mut self) {
         for c in 0..self.cursors.len() {
-            let len = self.len_to_cursor(c, -1);
-            self.backspace_bytes(c, len);
+            self.backspace(c, 1);
         }
 
         self.modified = true;
-    }
-
-    // note: does not use cursor.r
-    pub fn len_to_cursor(&self, c: usize, num_chars: isize) -> usize {
-        let forward = num_chars >= 0;
-        let num_chars = num_chars.abs() as usize;
-        let cursor = &self.cursors[c];
-        let mut y = cursor.y;
-        let line = &self.lines[y];
-
-        let area = match forward {
-            false => &line.buffer[..cursor.x],
-            true => &line.buffer[cursor.x..],
-        };
-
-        let mut chars = area.chars();
-        let mut len_bytes = 0;
-
-        for _ in 0..num_chars {
-            let maybe_c = match forward {
-                false => chars.next_back(),
-                true => chars.next(),
-            };
-
-            let Some(c) = maybe_c else {
-                let next_y = y + 1;
-                let valid = next_y < self.lines.len();
-
-                let maybe_new_y = match forward {
-                    false => y.checked_sub(1),
-                    true => valid.then_some(next_y),
-                };
-
-                let Some(new_y) = maybe_new_y else {
-                    // cannot go further!
-                    break;
-                };
-
-                y = new_y;
-                let prev_line = line;
-                let line = &self.lines[y];
-                chars = line.buffer.chars();
-
-                let eol_cr = match forward {
-                    false => line.eol_cr,
-                    true => prev_line.eol_cr,
-                };
-
-                len_bytes += 1 + (eol_cr as usize);
-                continue;
-            };
-
-            len_bytes += c.len_utf8();
-        }
-
-        len_bytes
     }
 
     pub fn dirty_line<'a>(
@@ -482,7 +447,8 @@ impl Tab {
 
     pub fn recalc_cursor_range(&mut self, c: usize) {
         let cursor = self.cursors[c];
-        self.cursors[c].r = self.range_at(cursor.x, cursor.y).0;
+        let (r, _o) = self.range_at(cursor.x, cursor.y);
+        self.cursors[c].range = r;
     }
 
     pub fn check_overscroll(&mut self, code_height: u16) {
@@ -512,8 +478,9 @@ impl Tab {
             };
 
             let cursor = self.cursors[c];
-            let line = &self.lines[cursor.y].buffer;
-            let x = line[..cursor.x].chars().map(char_w).sum();
+            let line = &self.lines[cursor.y];
+            let i = cursor.byte_offset(line);
+            let x = line.buffer[..i].chars().map(char_w).sum();
 
             let y = cursor.y as isize + delta;
             if let Ok(y) = usize::try_from(y) {
@@ -526,31 +493,30 @@ impl Tab {
         self.check_cursors();
     }
 
-    // warning: does not maintain cursor.r
+    // warning: does not maintain cursor.range
     fn backoff_cursor_once(&mut self, c: usize) {
         let cursor = &mut self.cursors[c];
 
         if cursor.x != 0 {
-            self.cursors[c].x -= self.len_to_cursor(c, -1);
+            cursor.x -= 1;
         } else if cursor.y != 0 {
             cursor.y -= 1;
-            let line = &self.lines[cursor.y].buffer;
-            cursor.x = line.len();
+            let line = &self.lines[cursor.y];
+            cursor.x = line.len_chars();
         }
     }
 
-    // warning: does not maintain cursor.r
+    // warning: does not maintain cursor.range
     fn advance_cursor_once(&mut self, c: usize) {
-        let next_char_len = self.len_to_cursor(c, 1);
         let cursor = &mut self.cursors[c];
 
-        let line = &self.lines[cursor.y].buffer;
-        let next_x = cursor.x + next_char_len;
-        let next_y = cursor.y + 1;
+        let line = &self.lines[cursor.y];
         let lines = self.lines.len();
+        let next_x = cursor.x + 1;
+        let next_y = cursor.y + 1;
 
         let has_next_line = next_y < lines;
-        let overflow = cursor.x >= line.len();
+        let overflow = cursor.x >= line.len_chars();
 
         if overflow & has_next_line {
             cursor.x = 0;
@@ -583,27 +549,18 @@ impl Tab {
         self.check_cursors();
     }
 
-    fn seek_in_line(&mut self, c: usize, y: usize, mut x_char: usize) {
+    fn seek_in_line(&mut self, c: usize, y: usize, mut x: usize) { // 5
         let cursor = &mut self.cursors[c];
         self.lines[cursor.y].dirty = true;
-        let line = &self.lines[y].buffer;
-        cursor.x = 0;
+        let line = &self.lines[y];
+        cursor.x = x;
 
-        for (i, c) in line.chars().enumerate() {
-            if i >= x_char {
-                break;
-            }
+        let i = cursor.byte_offset(line);
+        let iter = line.buffer[..i].split('\t');
+        let num_tab = iter.count() - 1;
+        x = cursor.x - num_tab * self.tab_width_m1;
 
-            if c == '\t' {
-                match x_char.checked_sub(self.tab_width_m1 + 1) {
-                    Some(n) => x_char = n,
-                    None => break,
-                }
-            }
-
-            cursor.x += c.len_utf8();
-        }
-
+        cursor.x = line.len_chars().min(x);
         cursor.y = y;
         self.lines[y].dirty = true;
         self.recalc_cursor_range(c);

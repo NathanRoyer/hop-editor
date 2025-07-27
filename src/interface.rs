@@ -115,9 +115,9 @@ fn write_text_cursor(
     // sorted
     cursors: &[usize],
     color: Color,
-    mut offset: usize,
     text: &str,
-    num_chars: &mut usize,
+    num_taken: &mut usize,
+    num_visible: &mut usize,
     tab_width_m1: usize,
     max: usize,
 ) -> Result<bool, fmt::Error> {
@@ -134,11 +134,11 @@ fn write_text_cursor(
             c_disp = ' ';
         }
 
-        if *num_chars + addition >= max {
+        if *num_visible + addition >= max {
             return Ok(true);
         }
 
-        if Some(offset) == cursor.copied() {
+        if Some(*num_taken) == cursor.copied() {
             cursor = cursors.next();
             write_rev(f, c_disp)?;
         } else {
@@ -149,8 +149,8 @@ fn write_text_cursor(
             let _ = write!(f, "{:^1$}", "", tab_width_m1);
         }
 
-        *num_chars += addition;
-        offset += c.len_utf8();
+        *num_visible += addition;
+        *num_taken += 1;
     }
 
     Ok(false)
@@ -159,8 +159,9 @@ fn write_text_cursor(
 impl<'a> fmt::Display for ColoredText<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let mut overflow = false;
+        let mut num_visible = 0;
+        let mut num_taken = 0;
         let mut offset = 0;
-        let mut chars = 0;
 
         for (mode_name, len) in self.parts {
             let end = offset + len;
@@ -171,9 +172,9 @@ impl<'a> fmt::Display for ColoredText<'a> {
                 f,
                 self.cursors,
                 color,
-                offset,
                 text,
-                &mut chars,
+                &mut num_taken,
+                &mut num_visible,
                 self.tab_width_m1,
                 self.max,
             )?;
