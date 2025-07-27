@@ -435,10 +435,6 @@ impl Tab {
         }
     }
 
-    pub fn error(&mut self, message: String) {
-        *self = Tab::new(None, message);
-    }
-
     pub fn highlight(&mut self, syntaxes: &SyntaxFile) {
         if self.tab_lang.is_none() {
             let Some(path) = &self.file_path else {
@@ -458,14 +454,14 @@ impl Tab {
 
         let Some(syntax) = syntaxes.get(lang) else {
             let valids: Vec<_> = syntaxes.inner.keys().collect();
-            self.error(format!("valid syntaxes: {valids:?}"));
+            confirm!("invalid syntax: {lang:?}\nvalid ones: {valids:?}");
             return;
         };
 
         self.rebuild();
         self.ranges = syntax.highlight(&self.tmp_buf);
         let cursors = 0..self.cursors.len();
-        cursors.for_each(|c| self.recompute_cursor_range(c));
+        cursors.for_each(|c| self.recalc_cursor_range(c));
 
         if false {
             let mut dump = String::new();
@@ -480,7 +476,7 @@ impl Tab {
         }
     }
 
-    pub fn recompute_cursor_range(&mut self, c: usize) {
+    pub fn recalc_cursor_range(&mut self, c: usize) {
         let cursor = self.cursors[c];
         self.cursors[c].r = self.range_at(cursor.x, cursor.y).0;
     }
@@ -572,7 +568,7 @@ impl Tab {
 
             let y = self.cursors[c].y;
             self.lines[y].dirty = true;
-            self.recompute_cursor_range(c);
+            self.recalc_cursor_range(c);
         }
 
         self.check_cursors();
@@ -592,7 +588,7 @@ impl Tab {
 
         cursor.y = y;
         self.lines[y].dirty = true;
-        self.recompute_cursor_range(c);
+        self.recalc_cursor_range(c);
     }
 
     pub fn seek(&mut self, x: u16, y: u16, append: bool) {
@@ -663,23 +659,25 @@ impl TabMap {
     }
 
     pub fn open(&mut self, file_path: String) -> Result<(), io::Error> {
-        let tab = self.current();
-        if tab.file_path.is_none() && !tab.modified {
-            self.inner.remove(self.current);
-        }
+        let cur_tab = self.current();
+        let replace_current = cur_tab.file_path.is_none() && !cur_tab.modified;
 
         for (index, tab) in self.inner.iter().enumerate() {
             if tab.file_path.as_ref() == Some(&file_path) {
-                self.current = index;
-                self.current().set_fully_dirty();
+                self.switch(index);
                 return Ok(());
             }
         }
 
         let tmp_buf = fs::read_to_string(&file_path)?;
         let tab = Tab::new(Some(file_path), tmp_buf);
-        self.current = self.inner.len();
+        let new_idx = self.inner.len();
         self.inner.push(tab);
+
+        match replace_current {
+            true => _ = self.inner.remove(self.current),
+            false => self.current = new_idx,
+        }
 
         Ok(())
     }

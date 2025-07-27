@@ -11,7 +11,7 @@ taking a lot of inspiration from Sublime Text.
 - edit multiple files simultaneously via tabs
 - syntax highlighting in edited files
 - intuitive mouse support
-- keyboard support
+- multi-cursor
 
 
 ## How To Use
@@ -25,8 +25,7 @@ taking a lot of inspiration from Sublime Text.
 
 ## To-Do List
 
-- undo / redo (C-z, C-y)
-- mutli cursor
 - text selection
+- undo / redo (C-z, C-y)
 - find next duplicate (C-d)
 - find (C-f)

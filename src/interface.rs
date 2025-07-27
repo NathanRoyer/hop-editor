@@ -52,11 +52,13 @@ fn cut_len(text: &str, max: usize) -> (Option<usize>, usize) {
     let mut len_chars = 0;
 
     for c in text.chars() {
-        if num_chars == max {
+        let next = num_chars + 1;
+
+        if next == max {
             return (Some(len_chars), num_chars);
         }
 
-        num_chars += 1;
+        num_chars = next;
         len_chars += c.len_utf8();
     }
 
@@ -115,15 +117,16 @@ fn write_text_cursor(
 
 impl<'a> fmt::Display for ColoredText<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let mut offset = 0;
         let mut overflow = false;
+        let mut max = self.max;
+        let mut offset = 0;
 
         for (mode_name, len) in self.parts {
             let end = offset + len;
             let text = &self.text[offset..end];
             let color = self.theme.get_ansi(mode_name);
 
-            if let (Some(cut), _) = cut_len(text, self.max) {
+            if let (Some(cut), _) = cut_len(text, max) {
                 let text = &text[..cut];
                 let tag_b = SetForegroundColor(Color::Reset);
                 write_text_cursor(f, self.cursors, color, offset, text)?;
@@ -135,6 +138,7 @@ impl<'a> fmt::Display for ColoredText<'a> {
             }
 
             offset = end;
+            max = max.saturating_sub(*len);
         }
 
         if self.cursors.contains(&offset) {
