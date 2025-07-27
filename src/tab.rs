@@ -32,6 +32,15 @@ impl Line {
     fn len_chars(&self) -> usize {
         self.buffer.chars().count()
     }
+
+    fn len_until(&self, x: usize) -> usize {
+        self
+            .buffer
+            .chars()
+            .take(x)
+            .map(|c| c.len_utf8())
+            .sum()
+    }
 }
 
 pub struct DirtyLine<'a> {
@@ -46,17 +55,6 @@ pub struct Cursor {
     x: usize,
     y: usize,
     range: usize,
-}
-
-impl Cursor {
-    pub fn byte_offset(&self, line: &Line) -> usize {
-        line
-            .buffer
-            .chars()
-            .take(self.x)
-            .map(|c| c.len_utf8())
-            .sum()
-    }
 }
 
 pub struct Tab {
@@ -170,7 +168,7 @@ impl Tab {
         self.ranges[cursor.range].len += text.len();
 
         let line = &mut self.lines[cursor.y];
-        let x_bytes = cursor.byte_offset(line);
+        let x_bytes = line.len_until(cursor.x);
         line.buffer.insert_str(x_bytes, text);
         line.dirty = true;
 
@@ -184,7 +182,7 @@ impl Tab {
 
         let line = &mut self.lines[cursor.y];
         swap(&mut line.eol_cr, &mut eol_cr);
-        let x_bytes = cursor.byte_offset(line);
+        let x_bytes = line.len_until(cursor.x);
         let buffer = line.buffer[x_bytes..].into();
         line.buffer.truncate(x_bytes);
 
@@ -281,12 +279,11 @@ impl Tab {
         }
 
         // mutable copy! not mut ref
-        let mut cursor = self.cursors[c];
+        let cursor = self.cursors[c];
         let line = &mut self.lines[cursor.y];
 
-        let old_i = cursor.byte_offset(line);
-        cursor.x -= num_chars;
-        let new_i = cursor.byte_offset(line);
+        let old_i = line.len_until(cursor.x);
+        let new_i = line.len_until(cursor.x - num_chars);
 
         line.buffer.replace_range(new_i..old_i, "");
         line.dirty = true;
@@ -477,9 +474,11 @@ impl Tab {
                 _ => 1,
             };
 
+            // to-do: check if we're not going
+            // back and forth for nothing
             let cursor = self.cursors[c];
             let line = &self.lines[cursor.y];
-            let i = cursor.byte_offset(line);
+            let i = line.len_until(cursor.x);
             let x = line.buffer[..i].chars().map(char_w).sum();
 
             let y = cursor.y as isize + delta;
@@ -553,14 +552,21 @@ impl Tab {
         let cursor = &mut self.cursors[c];
         self.lines[cursor.y].dirty = true;
         let line = &self.lines[y];
-        cursor.x = x;
+        let mut progress = 0;
 
-        let i = cursor.byte_offset(line);
-        let iter = line.buffer[..i].split('\t');
-        let num_tab = iter.count() - 1;
-        x = cursor.x - num_tab * self.tab_width_m1;
+        for c in line.buffer.chars() {
+            if progress >= x {
+                break;
+            }
 
-        cursor.x = line.len_chars().min(x);
+            if c == '\t' {
+                x = x.saturating_sub(self.tab_width_m1);
+            }
+
+            progress += 1;
+        }
+
+        cursor.x = progress;
         cursor.y = y;
         self.lines[y].dirty = true;
         self.recalc_cursor_range(c);
