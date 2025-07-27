@@ -30,7 +30,6 @@ pub struct Line {
 
 pub struct DirtyLine<'a> {
     pub line_no: Option<usize>,
-    pub cursor: Option<usize>,
     pub text: &'a str,
 }
 
@@ -298,47 +297,55 @@ impl Tab {
         self.modified = true;
     }
 
-    pub fn dirty_line<'a>(&'a mut self, index: u16, part_buf: &mut Vec<TextPart>) -> Option<DirtyLine<'a>> {
+    pub fn dirty_line<'a>(
+        &'a mut self,
+        index: u16,
+        part_buf: &mut Vec<TextPart>,
+        cursors: &mut Vec<usize>,
+    ) -> Option<DirtyLine<'a>> {
         let y = self.scroll + (index as isize);
         part_buf.clear();
+        cursors.clear();
 
         let Ok(y) = usize::try_from(y) else {
             part_buf.push(("wspace", 0));
-            return Some(DirtyLine { line_no: None, cursor: None, text: "" });
+            return Some(DirtyLine { line_no: None, text: "" });
         };
 
         let Some(line) = self.lines.get_mut(y) else {
             part_buf.push(("wspace", 0));
-            return Some(DirtyLine { line_no: None, cursor: None, text: "" });
+            return Some(DirtyLine { line_no: None, text: "" });
         };
 
-        let dirty = take(&mut line.dirty);
+        // return if not dirty
+        take(&mut line.dirty).then_some(())?;
 
-        if dirty {
-            let (r, mut o) = self.range_at(0, y);
+        let (r, mut o) = self.range_at(0, y);
+        let text = &self.lines[y].buffer;
+        let mut remaining = text.len();
 
-            let text = &self.lines[y].buffer;
-            let mut remaining = text.len();
+        for range in self.ranges.iter().skip(r) {
+            let mode_str = range.mode.as_str();
+            let len = (range.len - o).min(remaining);
+            part_buf.push((mode_str, len));
+            remaining -= len;
+            o = 0;
 
-            for range in self.ranges.iter().skip(r) {
-                let mode_str = range.mode.as_str();
-                let len = (range.len - o).min(remaining);
-                part_buf.push((mode_str, len));
-                remaining -= len;
-                o = 0;
-
-                if remaining == 0 {
-                    break;
-                }
+            if remaining == 0 {
+                break;
             }
-
-            let cursor = self.cursors.iter().find(|c| c.y == y).map(|c| c.x);
-            let line_no = Some(y + 1);
-
-            Some(DirtyLine { line_no, cursor, text })
-        } else {
-            None
         }
+
+        let iter_c = self
+            .cursors
+            .iter()
+            .filter(|c| c.y == y)
+            .map(|c| c.x);
+
+        cursors.extend(iter_c);
+        let line_no = Some(y + 1);
+
+        Some(DirtyLine { line_no, text })
     }
 
     fn range_at(&self, x: usize, y: usize) -> (usize, usize) {
@@ -461,9 +468,7 @@ impl Tab {
     }
 
     pub fn vertical_jump(&mut self, delta: isize) {
-        let cursors = 0..self.cursors.len();
-
-        for c in cursors.rev() {
+        for c in 0..self.cursors.len() {
             let cursor = self.cursors[c];
             let line = &self.lines[cursor.y].buffer;
             let x = line[..cursor.x].chars().count();
@@ -514,7 +519,6 @@ impl Tab {
     }
 
     pub fn horizontal_jump(&mut self, delta: isize) {
-        let cursors = 0..self.cursors.len();
         type Sig = (usize, fn(&mut Tab, usize));
 
         let (num_iter, callback): Sig = match delta < 0 {
@@ -522,7 +526,7 @@ impl Tab {
             false => (delta as usize, Self::advance_cursor_once),
         };
 
-        for c in cursors.rev() {
+        for c in 0..self.cursors.len() {
             for _ in 0..num_iter {
                 let y = self.cursors[c].y;
                 self.lines[y].dirty = true;
@@ -540,6 +544,7 @@ impl Tab {
     fn seek_in_line(&mut self, c: usize, y: usize, char_offset: usize) {
         let cursor = &mut self.cursors[c];
         self.lines[cursor.y].dirty = true;
+
         cursor.x = self
             .lines[y]
             .buffer
@@ -694,9 +699,9 @@ impl PartialOrd for Cursor {
 
 impl Ord for Cursor {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        match self.y != other.y {
-            true => self.y.cmp(&other.y),
-            false => self.x.cmp(&other.x),
+        match self.y == other.y {
+            true => self.x.cmp(&other.x),
+            false => self.y.cmp(&other.y),
         }
     }
 }

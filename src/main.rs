@@ -25,6 +25,7 @@ pub struct Globals {
     tree_hover: Option<u16>,
     tab_hover: Option<u16>,
     part_buf: Vec<TextPart>,
+    cursor_buf: Vec<usize>,
     list: TabList,
 
     // singletons
@@ -44,8 +45,9 @@ impl Globals {
         for i in 0..self.interface.code_height() {
             let tab = self.tabs.current();
 
-            if let Some(data) = tab.dirty_line(i, &mut self.part_buf) {
-                let text = ColoredText::new(&self.part_buf, data.cursor, data.text, &self.theme);
+            if let Some(data) = tab.dirty_line(i, &mut self.part_buf, &mut self.cursor_buf) {
+                // cursors are sorted
+                let text = ColoredText::new(&self.part_buf, &self.cursor_buf, data.text, &self.theme);
                 self.interface.set_code_row(i, data.line_no, text);
             }
         }
@@ -112,7 +114,7 @@ impl Globals {
                     self.tree.check_overscroll(max);
                     update_tree = true;
                 },
-                UserInput::CodeSeek(x, y) => tab.seek(x, y, false),
+                UserInput::CodeSeek(x, y, push_c) => tab.seek(x, y, push_c),
                 UserInput::TabClick(x) => {
                     if let Some(index) = self.interface.find_tab(x, &self.list) {
                         self.tabs.switch(index);
@@ -175,6 +177,7 @@ fn main() -> Result<(), &'static str> {
         // state
         list: TabList::new(),
         part_buf: Vec::new(),
+        cursor_buf: Vec::new(),
         tree_hover: None,
         tab_hover: None,
 

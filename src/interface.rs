@@ -26,7 +26,7 @@ pub enum UserInput {
     CloseTab,
     NextTab(bool),
     Insert(char),
-    CodeSeek(u16, u16),
+    CodeSeek(u16, u16, bool),
     TreeClick(u16),
     TreeHover(u16),
     TabHover(u16),
@@ -65,38 +65,41 @@ fn cut_len(text: &str, max: usize) -> (Option<usize>, usize) {
 
 pub struct ColoredText<'a> {
     parts: &'a [TextPart],
+    cursors: &'a [usize],
     theme: &'a Theme,
     text: &'a str,
-    cursor: Option<usize>,
     max: usize,
 }
 
 impl<'a> ColoredText<'a> {
     pub fn new(
         parts: &'a [TextPart],
-        cursor: Option<usize>,
+        cursors: &'a [usize],
         text: &'a str,
         theme: &'a Theme,
     ) -> Self {
-        Self { parts, theme, text, cursor, max: 0 }
+        Self { parts, theme, text, cursors, max: 0 }
     }
 }
 
 fn write_text_cursor(
     f: &mut fmt::Formatter,
-    cursor: Option<usize>,
+    // sorted
+    cursors: &[usize],
     color: Color,
-    offset: usize,
+    mut offset: usize,
     mut text: &str,
 ) -> Result<(), fmt::Error> {
     let tag_a = SetForegroundColor(color);
 
-    if let Some(cursor) = cursor {
-        if let Some(prefix) = cursor.checked_sub(offset) {
-            if prefix < text.len() {
-                let (prefix_str, rest) = text.split_at(prefix);
+    for cursor in cursors {
+        if let Some(prefix_len) = cursor.checked_sub(offset) {
+            if prefix_len < text.len() {
+                let (prefix_str, rest) = text.split_at(prefix_len);
                 let middle_char = rest.chars().next().unwrap();
-                text = &rest[middle_char.len_utf8()..];
+                let charlene = middle_char.len_utf8();
+                offset += prefix_len + charlene;
+                text = &rest[charlene..];
 
                 let tag_b = SetAttribute(Attribute::Reverse);
                 let tag_c = SetAttribute(Attribute::NoReverse);
@@ -123,18 +126,18 @@ impl<'a> fmt::Display for ColoredText<'a> {
             if let (Some(cut), _) = cut_len(text, self.max) {
                 let text = &text[..cut];
                 let tag_b = SetForegroundColor(Color::Reset);
-                write_text_cursor(f, self.cursor, color, offset, text)?;
+                write_text_cursor(f, self.cursors, color, offset, text)?;
                 write!(f, "{tag_b}…")?;
                 overflow = true;
                 break;
             } else {
-                write_text_cursor(f, self.cursor, color, offset, text)?;
+                write_text_cursor(f, self.cursors, color, offset, text)?;
             }
 
             offset = end;
         }
 
-        if self.cursor == Some(offset) {
+        if self.cursors.contains(&offset) {
             if overflow {
                 write!(f, "{}", MoveLeft(1))?;
             }
@@ -377,7 +380,7 @@ impl Interface {
         None
     }
 
-    fn on_mouse_event(&self, mut x: u16, mut y: u16) -> [UserInput; 2] {
+    fn on_mouse_event(&self, mut x: u16, mut y: u16, ctrl: bool) -> [UserInput; 2] {
         let code_x = TREE_WIDTH + (LN_WIDTH as u16) + 3;
         let tree_y = MENU_HEIGHT + 1;
 
@@ -405,7 +408,7 @@ impl Interface {
             [UserInput::NoOp, UserInput::ClearHover]
         } else {
             // in code
-            [UserInput::CodeSeek(x - code_x, y - 3), UserInput::ClearHover]
+            [UserInput::CodeSeek(x - code_x, y - 3, ctrl), UserInput::ClearHover]
         }
     }
 
@@ -447,14 +450,25 @@ impl Interface {
                 }
             },
             Event::Mouse(e) => {
-                let events = self.on_mouse_event(e.column, e.row);
-                match e.kind {
-                    MouseEventKind::ScrollDown => UserInput::Scroll(1),
-                    MouseEventKind::ScrollUp => UserInput::Scroll(-1),
-                    MouseEventKind::Down(MouseButton::Left) => events[0],
-                    MouseEventKind::Moved => events[1],
-                    MouseEventKind::Up(_) => UserInput::NoOp,
-                    _ => (confirm!("unk-ev: {e:?}"), UserInput::NoOp).1,
+                let ctrl = e.modifiers.contains(KeyModifiers::CONTROL);
+                let events = self.on_mouse_event(e.column, e.row, ctrl);
+
+                if ctrl {
+                    match e.kind {
+                        MouseEventKind::Down(MouseButton::Left) => events[0],
+                        MouseEventKind::Moved => events[1],
+                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        _ => (confirm!("unk-ev: {e:?}"), UserInput::NoOp).1,
+                    }
+                } else {
+                    match e.kind {
+                        MouseEventKind::ScrollDown => UserInput::Scroll(1),
+                        MouseEventKind::ScrollUp => UserInput::Scroll(-1),
+                        MouseEventKind::Down(MouseButton::Left) => events[0],
+                        MouseEventKind::Moved => events[1],
+                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        _ => (confirm!("unk-ev: {e:?}"), UserInput::NoOp).1,
+                    }
                 }
             },
             Event::Resize(w, h) => UserInput::Resize(w, h),
