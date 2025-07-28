@@ -9,6 +9,9 @@ description = 'terminal code editor'
 categories = [ 'command-line-utilities' ]
 license = 'MIT'
 
+[profile.release]
+debug = true
+
 [dependencies]
 crossterm = { version = "0.29", default-features = false, features = ['bracketed-paste', 'events'] }
 toml = { version = '0.9', default-features = false, features = ['serde', 'parse'] }

@@ -30,6 +30,7 @@ pub struct Globals {
     list: TabList,
 
     // singletons
+    syntaxes: SyntaxFile,
     interface: Interface,
     tree: FileTree,
     theme: Theme,
@@ -43,34 +44,36 @@ impl Globals {
     }
 
     fn update_code(&mut self) {
-        for i in 0..self.interface.code_height() {
-            let tab = self.tabs.current();
+        let tab = self.tabs.current();
+        tab.highlight(&self.syntaxes);
 
-            if let Some(data) = tab.dirty_line(i, &mut self.part_buf, &mut self.cursor_buf) {
-                // cursors are sorted
-                let text = ColoredText::new(
-                    &self.part_buf,
-                    &self.cursor_buf,
-                    data.text,
-                    data.tab_width_m1,
-                    &self.theme,
-                );
-                self.interface.set_code_row(i, data.line_no, text);
-            }
+        for i in 0..self.interface.code_height() {
+            let Some(data) = tab.dirty_line(i, &mut self.part_buf, &mut self.cursor_buf) else {
+                continue;
+            };
+
+            // cursors are sorted
+            let text = ColoredText::new(
+                &self.part_buf,
+                &self.cursor_buf,
+                data.text,
+                data.tab_width_m1,
+                &self.theme,
+            );
+
+            self.interface.set_code_row(i, data.line_no, text);
         }
     }
 
     fn update_tree(&mut self) {
+        let mut buf = String::with_capacity(64);
         for i in 0..self.interface.tree_height() {
-            let (indent, line) = self.tree.line(i).unwrap_or((0, ""));
-            self.interface.set_tree_row(self.tree_hover, i, indent, line, &self.theme);
+            self.tree.line(&mut buf, i);
+            self.interface.set_tree_row(self.tree_hover, i, &buf, &self.theme);
         }
     }
 
     fn run(&mut self) {
-        let syntaxes_str = include_str!("../syntax.toml");
-        let syntaxes = SyntaxFile::parse(syntaxes_str).unwrap();
-
         self.interface.draw_decorations();
         panic::set_hook(Box::new(panic_handler));
 
@@ -78,7 +81,6 @@ impl Globals {
             let max_y = self.interface.code_height();
             let tab = self.tabs.current();
             tab.check_overscroll(max_y);
-            tab.highlight(&syntaxes);
 
             if self.interface.must_refresh() {
                 self.interface.draw_decorations();
@@ -188,6 +190,8 @@ impl Globals {
 
 fn main() -> Result<(), &'static str> {
     let theme_str = include_str!("../theme.toml");
+    let syntaxes_str = include_str!("../syntax.toml");
+    let syntaxes = SyntaxFile::parse(syntaxes_str).unwrap();
 
     let mut globals = Globals {
         // state
@@ -203,6 +207,7 @@ fn main() -> Result<(), &'static str> {
         tree: FileTree::new(),
         theme: Theme::parse(theme_str)?,
         tabs: TabMap::new(),
+        syntaxes,
     };
 
     let mut args = env::args();

@@ -9,9 +9,9 @@
 [rust]
 extension = "rs"
 strings-normal = [
-    { start = '"', stop = '"', escape = ['n', 'r', '\', "\n"], multi-line = true, strfmt-braces = true },
-    { start = "'", stop = "'", escape = ['n', 'r', '\'], single-char = true },
-    { start = 'r#"', stop = '"#', escape = ['n', 'r', '\'], multi-line = true }
+    { start = '"', stop = '"', escape = ['n', 'r', 't', '\', "\n"], multi-line = true, strfmt-braces = true },
+    { start = "'", stop = "'", escape = ['n', 'r', 't', '\'], single-char = true },
+    { start = 'r#"', stop = '"#', escape = ['n', 'r', 't', '\'], multi-line = true }
 ]
 
 multi-line-comments = [
@@ -40,8 +40,8 @@ extension = "toml"
 strings-normal = [
     { start = "'", stop = "'", escape = [] },
     { start = "'''", stop = "'''", escape = [], multi-line = true },
-    { start = '"', stop = '"', escape = ['n', 'r', '\'] },
-    { start = '"""', stop = '"""', escape = ['n', 'r', '\'], multi-line = true }
+    { start = '"', stop = '"', escape = ['n', 'r', 't', '\'] },
+    { start = '"""', stop = '"""', escape = ['n', 'r', 't', '\'], multi-line = true }
 ]
 
 multi-line-comments = []
@@ -55,3 +55,39 @@ keywords-strong = ['true', 'false']
 keywords-basic = []
 keywords-weak = []
 call-syms = [']']
+
+[markdown]
+extension = "md"
+comment-prefix = []
+strings-normal = []
+strings-special = [
+    { start = "#", stop = '\\=+!!none', escape = [] },
+]
+
+multi-line-comments = [
+    { start = '```', stop = '```', escape = [], multi-line = true },
+]
+
+symbols = ['*', '_', '(', ')', '[', ']']
+
+number-glue = []
+numbers = []
+keywords-strong = []
+keywords-basic = []
+keywords-weak = []
+call-syms = []
+
+[json]
+extension = "json"
+comment-prefix = []
+strings-normal = [ { start = '"', stop = '"', escape = ['n', 'r', 't', '\'] } ]
+multi-line-comments = []
+
+symbols = [':', ',', '{', '}', '[', ']']
+
+number-glue = ['.', 'e', 'E', '-']
+numbers = ['dec', 'hex', 'oct', 'bin']
+keywords-strong = ['true', 'false']
+keywords-basic = []
+keywords-weak = []
+call-syms = []

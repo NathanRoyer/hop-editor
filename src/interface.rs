@@ -289,10 +289,10 @@ impl Interface {
         let _ = self.stdout.flush();
     }
 
-    pub fn write_text<T: fmt::Display>(&mut self, x: u16, y: u16, indent: usize, text: T) {
+    pub fn write_text<T: fmt::Display>(&mut self, x: u16, y: u16, text: T) {
         queue!(self.stdout, SetForegroundColor(Color::Reset)).unwrap();
         queue!(self.stdout, MoveTo(x, y)).unwrap();
-        let _ = write!(self.stdout, "{:1$}{text}", "", indent);
+        let _ = write!(self.stdout, "{text}");
         let _ = self.stdout.flush();
     }
 
@@ -300,7 +300,6 @@ impl Interface {
         &mut self,
         hovered: Option<u16>,
         index: u16,
-        indent: usize,
         text: &str,
         theme: &Theme,
     ) {
@@ -308,14 +307,12 @@ impl Interface {
             let color = theme.get_ansi("hover-bg");
             queue!(self.stdout, SetBackgroundColor(color)).unwrap();
         }
-        let max = TREE_WIDTH.min(self.width) as usize - indent;
+        let max = TREE_WIDTH.min(self.width) as usize;
         let (cut, chars) = cut_len(text, max);
         let cut = cut.unwrap_or(text.len());
-        self.write_text(0, MENU_HEIGHT + 1 + index, indent, &text[..cut]);
+        self.write_text(0, MENU_HEIGHT + 1 + index, &text[..cut]);
         queue!(self.stdout, SetBackgroundColor(Color::Reset)).unwrap();
         let _ = write!(self.stdout, "{:1$}", "", max - chars);
-
-        // "▶  ▷ ▼     ▽"
 
         let _ = self.stdout.flush();
     }
@@ -332,11 +329,11 @@ impl Interface {
 
         let y = TABS_HEIGHT + index;
         let mut x = TREE_WIDTH + 1;
-        self.write_text(x, y, 0, &buf);
+        self.write_text(x, y, &buf);
 
         x += LN_WIDTH as u16 + 2;
         text.max = self.width.saturating_sub(x) as usize;
-        self.write_text(x, y, 0, text);
+        self.write_text(x, y, text);
         let _ = queue!(self.stdout, Clear(ClearType::UntilNewLine));
 
         self.str_buf = buf;
@@ -393,10 +390,10 @@ impl Interface {
             let _ = write!(self.stdout, "{fg_reset}{bg_reset} │");
 
             queue!(self.stdout, MoveTo(tabs + cursor, 0)).unwrap();
-            let _ = write!(self.stdout, "{:╌^1$}┬", "", len);
+            let _ = write!(self.stdout, "{:─^1$}┬", "", len);
 
             queue!(self.stdout, MoveTo(tabs + cursor, 2)).unwrap();
-            let _ = write!(self.stdout, "{:╌^1$}┴", "", len);
+            let _ = write!(self.stdout, "{:─^1$}┴", "", len);
 
             cursor += 1 + (len as u16);
         }

@@ -2,7 +2,7 @@ use std::mem::{swap, take};
 use std::{io, fs, cmp};
 use std::sync::Arc;
 
-use crate::syntax::{Range, SyntaxFile};
+use crate::syntax::{Range, SyntaxFile, SyntaxConfig, LineContext};
 use crate::interface::TextPart;
 use crate::confirm;
 
@@ -23,7 +23,8 @@ fn strip_cr<'a>(text: &'a str, eol_cr: &mut bool) -> &'a str {
 #[derive(Clone, Debug, Default)]
 pub struct Line {
     buffer: String,
-    // did the line end with \r
+    ranges: Vec<Range>,
+    eol_ctx: Option<LineContext>,
     eol_cr: bool,
     dirty: bool,
 }
@@ -63,7 +64,6 @@ pub struct Tab {
     name: Arc<str>,
 
     // state
-    ranges: Vec<Range>,
     lines: Vec<Line>,
     scroll: isize,
     cursors: Vec<Cursor>,
@@ -77,12 +77,6 @@ pub struct Tab {
 pub struct TabMap {
     inner: Vec<Tab>,
     current: usize,
-}
-
-impl Line {
-    pub fn len_bytes(&self) -> usize {
-        self.buffer.len() + (self.eol_cr as usize)
-    }
 }
 
 fn file_name(path: &Option<String>) -> Arc<str> {
@@ -102,9 +96,7 @@ impl Tab {
         file_path: Option<String>,
         text: String,
     ) -> Self {
-        let mut range = Range::default();
         let mut line = Line::default();
-        range.len = text.len();
         line.dirty = true;
         let name = file_name(&file_path);
 
@@ -114,7 +106,6 @@ impl Tab {
             name,
 
             // state
-            ranges: vec![range],
             lines: vec![line],
             scroll: 0,
             cursors: vec![Cursor::default()],
@@ -165,11 +156,10 @@ impl Tab {
 
     fn insert_text_no_lf(&mut self, c: usize, text: &str) {
         let cursor = &mut self.cursors[c];
-        self.ranges[cursor.range].len += text.len();
 
         let line = &mut self.lines[cursor.y];
-        let x_bytes = line.len_until(cursor.x);
-        line.buffer.insert_str(x_bytes, text);
+        let offset = line.len_until(cursor.x);
+        line.buffer.insert_str(offset, text);
         line.dirty = true;
 
         self.add_to_cursors(c, false, text.len());
@@ -177,17 +167,17 @@ impl Tab {
 
     fn line_feed(&mut self, c: usize, mut eol_cr: bool) {
         let cursor = &self.cursors[c];
-        let range = &mut self.ranges[cursor.range];
-        range.len += 1 + (eol_cr as usize);
-
         let line = &mut self.lines[cursor.y];
+
         swap(&mut line.eol_cr, &mut eol_cr);
-        let x_bytes = line.len_until(cursor.x);
-        let buffer = line.buffer[x_bytes..].into();
-        line.buffer.truncate(x_bytes);
+        let offset = line.len_until(cursor.x);
+        let buffer = line.buffer[offset..].into();
+        line.buffer.truncate(offset);
 
         let new_line = Line {
             buffer,
+            ranges: vec![],
+            eol_ctx: None,
             dirty: true,
             eol_cr,
         };
@@ -271,7 +261,6 @@ impl Tab {
         self.backspace_cursor(c, true, x_add as isize);
     }
 
-    // does not try to correct the range... i feel like it's ok
     fn backspace(&mut self, c: usize, mut num_chars: usize) {
         while self.cursors[c].x < num_chars {
             self.merge_with_prev_line(c);
@@ -322,21 +311,19 @@ impl Tab {
 
         // return if not dirty
         take(&mut line.dirty).then_some(())?;
+        let text = &line.buffer;
+        let mut covered = 0;
 
-        let (r, mut o) = self.range_at(0, y);
-        let text = &self.lines[y].buffer;
-        let mut remaining = text.len();
-
-        for range in self.ranges.iter().skip(r) {
+        // todo: maybe remove this useless copying
+        for range in line.ranges.iter() {
             let mode_str = range.mode.as_str();
-            let len = (range.len - o).min(remaining);
-            part_buf.push((mode_str, len));
-            remaining -= len;
-            o = 0;
+            part_buf.push((mode_str, range.len));
+            covered += range.len;
+        }
 
-            if remaining == 0 {
-                break;
-            }
+        if covered < text.len() {
+            let missing = text.len() - covered;
+            part_buf.push(("wspace", missing));
         }
 
         let iter_c = self
@@ -349,38 +336,6 @@ impl Tab {
         let line_no = Some(y + 1);
 
         Some(DirtyLine { line_no, tab_width_m1, text })
-    }
-
-    fn range_at(&self, x: usize, y: usize) -> (usize, usize) {
-        let mut iter = self.ranges.iter();
-        let mut range = *iter.next().expect("should not happen");
-        let mut offset = 0;
-        let mut i = 0;
-
-        let mut advance = |mut n: usize| {
-            while n > (range.len - offset) {
-                i += 1;
-                n -= range.len - offset;
-
-                match iter.next() {
-                    Some(r) => range = *r,
-                    None => break,
-                }
-
-                offset = 0;
-            }
-
-            offset += n;
-        };
-
-        // for each line before this one
-        for line in self.lines.iter().take(y) {
-            advance(line.len_bytes() + 1);
-        }
-
-        advance(x);
-
-        (i, offset)
     }
 
     fn rebuild(&mut self) {
@@ -401,51 +356,39 @@ impl Tab {
         }
     }
 
-    pub fn highlight(&mut self, syntaxes: &SyntaxFile) {
+    fn get_syntax<'a>(&mut self, syntaxes: &'a SyntaxFile) -> Option<&'a SyntaxConfig> {
         if self.tab_lang.is_none() {
-            let Some(path) = &self.file_path else {
-                return;
-            };
-
-            let Some((_, ext)) = path.rsplit_once('.') else {
-                return;
-            };
+            let path = self.file_path.as_ref()?;
+            let (_, ext) = path.rsplit_once('.')?;
 
             self.tab_lang = syntaxes.resolve_ext(ext).map(String::from);
         }
 
-        let Some(lang) = &self.tab_lang else {
-            return;
-        };
+        let lang = self.tab_lang.as_ref()?;
 
         let Some(syntax) = syntaxes.get(lang) else {
             let valids: Vec<_> = syntaxes.inner.keys().collect();
             confirm!("invalid syntax: {lang:?}\nvalid ones: {valids:?}");
+            return None;
+        };
+
+        Some(syntax)
+    }
+
+    pub fn highlight(&mut self, syntaxes: &SyntaxFile) {
+        let Some(syntax) = self.get_syntax(syntaxes) else {
             return;
         };
 
-        self.rebuild();
-        self.ranges = syntax.highlight(&self.tmp_buf);
-        let cursors = 0..self.cursors.len();
-        cursors.for_each(|c| self.recalc_cursor_range(c));
+        let mut ctx = None;
 
-        if false {
-            let mut dump = String::new();
-            let mut start = 0;
-            for range in &self.ranges.clone() {
-                let stop = start + range.len;
-                dump += &format!("{} {}: {}\n", range.mode.as_str(), range.len, &self.tmp_buf[start..stop]);
-                start = stop;
+        for line in self.lines.iter_mut() {
+            if line.dirty {
+                line.eol_ctx = syntax.highlight(ctx, &mut line.ranges, &line.buffer);
             }
 
-            fs::write("dump.txt", dump).unwrap();
+            ctx = line.eol_ctx;
         }
-    }
-
-    pub fn recalc_cursor_range(&mut self, c: usize) {
-        let cursor = self.cursors[c];
-        let (r, _o) = self.range_at(cursor.x, cursor.y);
-        self.cursors[c].range = r;
     }
 
     pub fn check_overscroll(&mut self, code_height: u16) {
@@ -492,7 +435,6 @@ impl Tab {
         self.check_cursors();
     }
 
-    // warning: does not maintain cursor.range
     fn backoff_cursor_once(&mut self, c: usize) {
         let cursor = &mut self.cursors[c];
 
@@ -505,7 +447,6 @@ impl Tab {
         }
     }
 
-    // warning: does not maintain cursor.range
     fn advance_cursor_once(&mut self, c: usize) {
         let cursor = &mut self.cursors[c];
 
@@ -542,7 +483,6 @@ impl Tab {
 
             let y = self.cursors[c].y;
             self.lines[y].dirty = true;
-            self.recalc_cursor_range(c);
         }
 
         self.check_cursors();
@@ -569,7 +509,6 @@ impl Tab {
         cursor.x = progress;
         cursor.y = y;
         self.lines[y].dirty = true;
-        self.recalc_cursor_range(c);
     }
 
     pub fn seek(&mut self, x: u16, y: u16, append: bool) {

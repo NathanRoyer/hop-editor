@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use litemap::LiteMap;
+use core::mem::take;
 use RangeMode::*;
 
 /* CONFIG STRUCT */
@@ -159,193 +160,20 @@ pub struct Range {
     pub mode: RangeMode,
 }
 
-struct State<'a> {
-    ranges: LiteMap<usize, Range>,
-    syntax: &'a SyntaxConfig,
-    target: &'a str,
+impl Range {
+    pub fn new(len: usize, mode: RangeMode) -> Self {
+        Self { len, mode }
+    }
 }
 
-type KeyedRange = (usize, Range);
-
-impl<'a> State<'a> {
-    fn new(syntax: &'a SyntaxConfig, target: &'a str) -> Self {
-        Self {
-            ranges: Default::default(),
-            syntax,
-            target,
-        }
-    }
-
-    fn process<F: Fn(&SyntaxConfig, &str, usize, usize) -> Option<KeyedRange>>(&mut self, func: F) {
-        let mut cursor = 0;
-
-        let mut i = 0;
-
-        while cursor < self.target.len() {
-            // locate next range
-            let (nr_start, nr_len, new_i) = match self.ranges.get_indexed(i) {
-                Some((range_start, range)) => (*range_start, range.len, i + 1),
-                None => (self.target.len(), 0, i),
-            };
-
-            if let Some((offset, new_range)) = func(&self.syntax, self.target, cursor, nr_start) {
-                // repeat the search before this new token
-                // (with i unchanged, we will now scan from cursor to offset)
-                self.ranges.insert(offset, new_range);
-            } else {
-                // nothing to see here; move along
-                cursor = nr_start + nr_len;
-                i = new_i;
-            }
-        }
-    }
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum LineContext {
+    Comment(usize),
+    Special(usize),
+    String(usize),
 }
 
 impl SyntaxConfig {
-    pub fn highlight(&self, target: &str) -> Vec<Range> {
-        let mut state = State::new(self, target);
-
-        state.process(SyntaxConfig::find_comments_and_strings);
-        state.process(SyntaxConfig::find_symbols);
-        state.process(SyntaxConfig::find_whitespace);
-        state.process(SyntaxConfig::find_others);
-
-        // tag function calls
-        let (mut i, mut j) = (0, 1);
-
-        while j < state.ranges.len() {
-            let (a_start, a_range) = state.ranges.get_indexed(i).unwrap();
-            let (b_start, b_range) = state.ranges.get_indexed(j).unwrap();
-
-            if let Identifier(casing) = a_range.mode {
-                let snippet = &state.target[*b_start..][..b_range.len];
-
-                if self.call_syms.iter().any(|sym| sym == snippet) {
-                    let key = *a_start;
-                    state.ranges[&key].mode = Call(casing);
-                }
-            }
-
-            i = j;
-            j += 1;
-        }
-
-        // todo: tag string formats and escapes
-
-        let mut vec = state.ranges.into_tuple_vec();
-
-        if vec.is_empty() {
-            vec.push((0, Range::default()));
-        }
-
-        vec.into_iter().map(|(_, r)| r).collect()
-    }
-
-    fn find_comments_and_strings(&self, target: &str, start: usize, stop: usize) -> Option<KeyedRange> {
-        let mut candidate = None;
-
-        for symbol in &self.comment_prefix {
-            let mut search_area = &target[start..stop];
-            let mode = Comment;
-
-            if let Some(offset) = search_area.find(symbol) {
-                search_area = &search_area[offset + symbol.len()..];
-                let maybe_len = search_area.find('\n');
-                let len = maybe_len.unwrap_or(search_area.len()) + symbol.len();
-                candidate = Some((start + offset, Range { mode, len }));
-            }
-        }
-
-        let string_specs = [
-            (&self.multi_line_comments, Comment),
-            (&self.strings_normal, StringNormal),
-            (&self.strings_special, StringSpecial),
-        ];
-
-        for (configs, mode) in string_specs {
-            for string_cfg in configs {
-                let Some((r_start, r_range)) = string_cfg.find(target, start, stop, mode) else {
-                    continue;
-                };
-
-                let replace = match candidate {
-                    None => true,
-                    Some((c_start, _)) => r_start < c_start,
-                };
-
-                if replace {
-                    candidate = Some((r_start, r_range));
-                }
-            }
-        }
-
-        candidate
-    }
-}
-
-impl SyntaxConfig {
-    fn find_symbols(&self, target: &str, start: usize, stop: usize) -> Option<KeyedRange> {
-        let mode = Symbol;
-
-        for symbol in &self.symbols {
-            if let Some(offset) = target[start..stop].find(symbol) {
-                let range = Range { mode, len: symbol.len() };
-                return Some((start + offset, range));
-            }
-        }
-
-        None
-    }
-
-    fn find_whitespace(&self, target: &str, start: usize, stop: usize) -> Option<KeyedRange> {
-        let mode = Whitespace;
-        let mut started = false;
-        let mut offset = 0;
-        let mut length = 0;
-
-        for c in target[start..stop].chars() {
-            let valid = c.is_whitespace();
-
-            let len_target = match valid {
-                true => &mut length,
-                false => &mut offset,
-            };
-
-            if started & !valid {
-                break;
-            }
-
-            started |= valid;
-            *len_target += c.len_utf8();
-        }
-
-        if started {
-            let range = Range { mode, len: length };
-            return Some((start + offset, range));
-        } else {
-            None
-        }
-    }
-
-    fn find_others(&self, target: &str, start: usize, stop: usize) -> Option<KeyedRange> {
-        let area = &target[start..stop];
-
-        if area.len() == 0 {
-            return None;
-        }
-
-        let mode = match self.classify_number(area) {
-            Some(num_type) => Number(num_type),
-            None => match self.classify_keyword(area) {
-                Some(mode) => mode,
-                None => Identifier(Casing::detect(area)),
-            },
-        };
-
-        let range = Range { mode, len: area.len() };
-        return Some((start, range));
-    }
-
     fn classify_number(&self, area: &str) -> Option<NumberType> {
         // todo: floats
 
@@ -389,64 +217,214 @@ impl SyntaxConfig {
 
         None
     }
-}
 
-impl StringConfig {
-    fn find(&self, target: &str, mut start: usize, stop: usize, mode: RangeMode) -> Option<KeyedRange> {
-        loop {
-            let mut search_area = &target[start..stop];
-            let string_start = start + search_area.find(&self.start)?;
+    pub fn highlight(
+        &self,
+        start: Option<LineContext>,
+        dst: &mut Vec<Range>,
+        mut line: &str,
+    ) -> Option<LineContext> {
+        let line_backup = line;
+        dst.clear();
 
-            let mut skip = string_start + self.start.len();
-            search_area = &target[skip..stop];
+        if let Some(ctx) = start {
+            let (str_cfg, mode) = match ctx {
+                LineContext::Special(i) => (&self.strings_special[i], StringSpecial),
+                LineContext::String(i) => (&self.strings_normal[i], StringNormal),
+                LineContext::Comment(i) => (&self.multi_line_comments[i], Comment),
+            };
 
-            // for single-char rules only
-            let mut esc_len = 1;
+            let Some(offset) = str_cfg.find_end(line) else {
+                // this line does not change the context
+                dst.push(Range::new(line.len(), mode));
+                return start;
+            };
 
-            // detect escaped characters
-            while let Some((before, after)) = search_area.split_once('\\') {
-                if before.contains(&self.stop) {
-                    break;
+            dst.push(Range::new(offset, mode));
+            line = &line[offset..];
+        }
+
+        let mut ident_len = 0;
+
+        fn check_push_ident(ident_len: &mut usize, dst: &mut Vec<Range>) {
+            let ident_len = take(ident_len);
+            if ident_len > 0 {
+                dst.push(Range::new(ident_len, Identifier(Casing::Mixed)));
+            }
+        }
+
+        'reparse: while line.len() > 0 {
+            // single line comments
+
+            for prefix in &self.comment_prefix {
+                if line.starts_with(prefix) {
+                    check_push_ident(&mut ident_len, dst);
+                    let mode = Comment;
+                    dst.push(Range::new(line.len(), mode));
+                    return None;
+                }
+            }
+
+
+            // strings
+
+            type Builder = fn(usize) -> LineContext;
+
+            let string_specs = [
+                (&self.strings_special, StringSpecial, LineContext::Special as Builder),
+                (&self.strings_normal, StringNormal, LineContext::String as Builder),
+                (&self.multi_line_comments, Comment, LineContext::Comment as Builder),
+            ];
+
+            for (cfg_vec, mode, ctx_gen) in string_specs {
+                for (i, str_cfg) in cfg_vec.iter().enumerate() {
+                    let Some(payload) = line.strip_prefix(&str_cfg.start) else {
+                        continue;
+                    };
+
+                    check_push_ident(&mut ident_len, dst);
+
+                    let Some(offset) = str_cfg.find_end(payload) else {
+                        dst.push(Range::new(line.len(), mode));
+                        return Some(ctx_gen(i));
+                    };
+
+                    let len = str_cfg.start.len() + offset;
+                    dst.push(Range::new(len, mode));
+                    line = &payload[offset..];
+                    continue 'reparse;
+                }
+            }
+
+
+            // symbols
+
+            for symbol in &self.symbols {
+                if let Some(rest) = line.strip_prefix(symbol) {
+                    check_push_ident(&mut ident_len, dst);
+                    dst.push(Range::new(symbol.len(), Symbol));
+                    line = rest;
+                    continue 'reparse;
+                }
+            }
+
+
+            // whitespaces
+
+            let mut iter = line.chars();
+            let mut c = iter.next().unwrap();
+
+            if c.is_whitespace() {
+                let mut len = 0;
+
+                while c.is_whitespace() {
+                    len += c.len_utf8();
+
+                    match iter.next() {
+                        Some(next) => c = next,
+                        None => break,
+                    };
                 }
 
-                skip += before.len() + 1;
+                check_push_ident(&mut ident_len, dst);
+                dst.push(Range::new(len, Whitespace));
+                line = &line[len..];
+                continue 'reparse;
+            }
 
-                for allowed_esc in &self.escape {
-                    if after.starts_with(*allowed_esc) {
-                        esc_len = 2;
-                        skip += allowed_esc.len_utf8();
+
+            // identifiers
+
+            let charlene = c.len_utf8();
+            ident_len += charlene;
+            line = &line[charlene..];
+        }
+
+        check_push_ident(&mut ident_len, dst);
+
+        // sort identifiers and calls
+        line = line_backup;
+
+        for r in 0..dst.len() {
+            let range = dst[r];
+
+            if let Identifier(_) = range.mode {
+                let slice = &line[..range.len];
+                let mut dst_mode;
+
+                if let Some(num_type) = self.classify_number(slice) {
+                    dst_mode = Number(num_type);
+                } else if let Some(mode) = self.classify_keyword(slice) {
+                    dst_mode = mode;
+                } else {
+                    let casing = Casing::detect(slice);
+                    dst_mode = Identifier(casing);
+
+                    if let Some(next) = dst.get(r + 1) {
+                        let snippet = &line[range.len..][..next.len];
+
+                        if self.call_syms.iter().any(|s| s == snippet) {
+                            dst_mode = Call(casing);
+                        }
                     }
                 }
 
-                // todo: handle unallowed escape
-                search_area = &target[skip..stop];
+                dst[r].mode = dst_mode;
             }
 
-            let Some(stop_index) = search_area.find(&self.stop) else {
-                start = string_start + self.start.len();
-                continue;
-            };
+            line = &line[range.len..];
+        }
 
-            let string_stop = skip + stop_index + self.stop.len();
+        None
+    }
+}
 
-            let len = string_stop
-                .checked_sub(string_start)
-                .expect("unexpected underflow");
+impl StringConfig {
+    fn find_end(&self, mut target: &str) -> Option<usize> {
+        let mut char_max = 1;
+        let mut skipped = 0;
 
-            search_area = &target[string_start..string_stop];
-            if !self.multi_line && search_area.contains('\n') {
-                start = string_start + self.start.len();
-                continue;
+        // detect escaped characters
+        while let Some((before, after)) = target.split_once('\\') {
+            if before.contains(&self.stop) {
+                break;
             }
 
-            let max_len = || self.start.len() + self.stop.len() + esc_len;
+            let mut skip = before.len() + 1;
 
-            if self.single_char && len > max_len() {
-                start = string_start + self.start.len();
-                continue;
+            for allowed_esc in &self.escape {
+                if after.starts_with(*allowed_esc) {
+                    skip += allowed_esc.len_utf8();
+                    char_max = 2;
+                    break;
+                }
             }
 
-            break Some((string_start, Range { mode, len }));
+            // todo: handle unallowed escape
+            skipped += skip;
+            target = &target[skip..];
+        }
+
+        if let Some(stop_index) = target.find(&self.stop) {
+            let len = skipped + stop_index;
+
+            match self.single_char && len > char_max {
+                // highlight only the start token as fallback
+                true => Some(0),
+                false => Some(len + self.stop.len()),
+            }
+        } else {
+            let len = skipped + target.len();
+
+            if self.single_char && len > char_max {
+                return Some(0);
+            }
+
+            match self.multi_line {
+                true => None,
+                // fallback: hightlight until end of line
+                false => Some(len),
+            }
         }
     }
 }

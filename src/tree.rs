@@ -1,5 +1,9 @@
-use std::{io, fs};
+use std::{io, fs, cmp};
+use std::fmt::Write;
 
+// syms: ▷▽▶▼;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct Entry {
     name_or_path: String,
     depth: usize,
@@ -9,6 +13,8 @@ pub struct FileTree {
     entries: Vec<Entry>,
     scroll: isize,
 }
+
+const HIDE_LIST: &[&str] = &[".git", "target"];
 
 impl Entry {
     fn name(&self) -> &str {
@@ -25,10 +31,6 @@ impl Entry {
         }
 
         &self.name_or_path[pre_len..]
-    }
-
-    fn line(&self) -> (usize, &str) {
-        (self.depth * 3, self.name())
     }
 
     fn is_trunk(&self) -> bool {
@@ -122,22 +124,47 @@ impl FileTree {
             self.entries.extend(iter);
         } else {
             let dir_path = self.get_path(i)?;
+            let i = self.entries.len();
 
             if read_dir(dir_path, &mut self.entries, depth).is_err() {
                 // todo: handle error
                 return None;
             };
 
+            self.entries[i..].sort();
             self.entries.extend(suffix);
         }
 
         None
     }
 
-    pub fn line(&self, index: u16) -> Option<(usize, &str)> {
-        let i = self.scroll + (index as isize);
-        let i = usize::try_from(i).ok()?;
-        self.entries.get(i).map(Entry::line)
+    pub fn line(&self, buf: &mut String, index: u16) {
+        let i = usize::try_from(self.scroll + (index as isize));
+        let len = self.entries.len();
+        buf.clear();
+
+        if !i.ok().is_some_and(|i| i < len) {
+            return;
+        }
+
+        let i = i.unwrap();
+        let entry = &self.entries[i];
+        let is_dir = entry.is_dir();
+        let name = entry.name();
+
+        let is_unfolded = self
+            .entries
+            .get(i + 1)
+            .is_some_and(|next| next.depth > entry.depth);
+
+        let sym = match (is_dir, is_unfolded) {
+            (true, false) => '▷',
+            (true, true) => '▼',
+            (false, _) => ' ',
+        };
+
+        let indent = entry.depth * 3;
+        let _ = write!(buf, "{:1$}{sym} {name}", "", indent);
     }
 
     pub fn check_overscroll(&mut self, tree_height: u16) {
@@ -171,7 +198,9 @@ fn read_dir(dir_path: String, entries: &mut Vec<Entry>, depth: usize) -> io::Res
             continue;
         };
 
-        let Ok(ft) = item.file_type() else {
+        let hidden = HIDE_LIST.contains(&name_or_path.as_str());
+
+        let (Ok(ft), false) = (item.file_type(), hidden) else {
             continue;
         };
 
@@ -198,4 +227,21 @@ fn read_dir(dir_path: String, entries: &mut Vec<Entry>, depth: usize) -> io::Res
     }
 
     Ok(())
+}
+
+impl PartialOrd for Entry {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+// dirs < files
+impl Ord for Entry {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        match (self.is_dir(), other.is_dir()) {
+            (true, false) => cmp::Ordering::Less,
+            (false, true) => cmp::Ordering::Greater,
+            _ => self.name().cmp(other.name()),
+        }
+    }
 }
