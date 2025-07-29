@@ -93,9 +93,9 @@ impl Tab {
         file_path: Option<String>,
         text: String,
     ) -> Self {
+        let name = file_name(&file_path);
         let mut line = Line::default();
         line.dirty = true;
-        let name = file_name(&file_path);
 
         let mut this = Self {
             file_path,
@@ -331,7 +331,7 @@ impl Tab {
             self.set_fully_dirty();
         }
 
-        return it_happened;
+        it_happened
     }
 
     pub fn prepare_draw(&mut self, index: u16) -> Option<(usize, bool)> {
@@ -545,7 +545,7 @@ impl Tab {
 
             if select {
                 cursor.sel_y -= 1;
-                cursor.sel_x = (chars as isize) + cursor.sel_x;
+                cursor.sel_x += chars as isize;
             }
         } else if !overflow {
             cursor.x = next_x;
@@ -576,7 +576,7 @@ impl Tab {
         self.check_cursors();
     }
 
-    fn seek_in_line(&mut self, c: usize, y: usize, mut x: usize) { // 5
+    fn seek_in_line(&mut self, c: usize, y: usize, mut x: usize) {
         let cursor = &mut self.cursors[c];
         self.lines[cursor.y].dirty = true;
         let line = &self.lines[y];
@@ -725,7 +725,7 @@ impl TabMap {
 
         self.inner.remove(index);
 
-        if self.inner.len() == 0 {
+        if self.inner.is_empty() {
             let tab = Tab::new(None, String::new());
             self.inner.push(tab);
         }
@@ -762,14 +762,10 @@ impl TabMap {
 
 impl Cursor {
     fn covers(&self, y: usize) -> bool {
-        if self.y < y {
-            let diff = y - self.y;
-            self.sel_y > (diff as isize)
-        } else if self.y > y {
-            let diff = self.y - y;
-            self.sel_y < -(diff as isize)
-        } else {
-            false
+        match self.y.cmp(&y) {
+            cmp::Ordering::Greater => self.sel_y < -((self.y - y) as isize),
+            cmp::Ordering::Less => self.sel_y > ((y - self.y) as isize),
+            cmp::Ordering::Equal => false,
         }
     }
 

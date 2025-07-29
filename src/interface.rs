@@ -439,7 +439,7 @@ pub fn set_dirty() {
 #[macro_export]
 macro_rules! confirm {
     ($entry:expr $(, $arg:expr)* $(,)?) => {
-        crate::interface::_confirm(format!($entry, $($arg),*))
+        $crate::interface::_confirm(format!($entry, $($arg),*))
     }
 }
 

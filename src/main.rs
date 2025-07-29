@@ -243,11 +243,9 @@ fn main() -> Result<(), &'static str> {
 
         if path.is_dir() {
             globals.tree.add_folder(path_str);
-        } else {
-            if let Err(err) = globals.tabs.open(path_str) {
-                println!("{err:?}");
-                return Err("failed to open some files");
-            }
+        } else if let Err(err) = globals.tabs.open(path_str) {
+            println!("{err:?}");
+            return Err("failed to open some files");
         }
     }
 

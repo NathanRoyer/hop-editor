@@ -253,7 +253,7 @@ impl SyntaxConfig {
             }
         }
 
-        'reparse: while line.len() > 0 {
+        'reparse: while !line.is_empty() {
             // single line comments
 
             for prefix in &self.comment_prefix {

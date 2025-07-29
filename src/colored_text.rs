@@ -61,7 +61,7 @@ fn write_cursor(f: &mut fmt::Formatter, c: char) -> Result<(), fmt::Error> {
     write!(f, "{rev1}{c}{rev2}")
 }
 
-impl<'a> fmt::Display for ColoredText<'a> {
+impl fmt::Display for ColoredText<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let selected = Color::from((80, 80, 80));
         let mut iter_cursor = self.cursors.iter();

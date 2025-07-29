@@ -74,11 +74,9 @@ impl FileTree {
         let mut j = i;
 
         while entry.depth > 0 {
-            if entry.is_dir() {
-                if entry.depth < depth {
-                    parts.insert(0, entry.name_or_path.as_str());
-                    depth = entry.depth;
-                }
+            if entry.is_dir() && entry.depth < depth {
+                parts.insert(0, entry.name_or_path.as_str());
+                depth = entry.depth;
             }
 
             if parts.is_empty() {
@@ -95,14 +93,8 @@ impl FileTree {
 
     pub fn click(&mut self, index: u16) -> Option<String> {
         let i = self.scroll + (index as isize);
-
-        let Ok(i) = usize::try_from(i) else {
-            return None;
-        };
-
-        let Some(entry) = self.entries.get(i) else {
-            return None;
-        };
+        let i = usize::try_from(i).ok()?;
+        let entry = self.entries.get(i)?;
 
         if !entry.is_dir() {
             return self.get_path(i);
@@ -143,7 +135,7 @@ impl FileTree {
         let len = self.entries.len();
         buf.clear();
 
-        if !i.ok().is_some_and(|i| i < len) {
+        if !i.is_ok_and(|i| i < len) {
             return;
         }
 
