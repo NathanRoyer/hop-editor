@@ -1,4 +1,5 @@
-use interface::{Interface, ColoredText, TextPart, UserInput, restore_term};
+use colored_text::{ColoredText, Part as TextPart, Selection};
+use interface::{Interface, UserInput, restore_term};
 use tab::{TabMap, TabList};
 use syntax::SyntaxFile;
 use tree::FileTree;
@@ -6,6 +7,7 @@ use theme::Theme;
 
 use std::{env, fs, panic, backtrace};
 
+mod colored_text;
 mod interface;
 mod syntax;
 mod theme;
@@ -24,10 +26,13 @@ pub struct Globals {
     // state
     tree_hover: Option<u16>,
     tab_hover: Option<u16>,
-    part_buf: Vec<TextPart>,
-    cursor_buf: Vec<usize>,
     select_pos: Option<(u16, u16)>,
     list: TabList,
+
+    // these three should stay sorted
+    part_buf: Vec<TextPart>,
+    sel_buf: Vec<Selection>,
+    cursor_buf: Vec<usize>,
 
     // singletons
     syntaxes: SyntaxFile,
@@ -48,20 +53,33 @@ impl Globals {
         tab.highlight(&self.syntaxes);
 
         for i in 0..self.interface.code_height() {
-            let Some(data) = tab.dirty_line(i, &mut self.part_buf, &mut self.cursor_buf) else {
-                continue;
+            let mut line_no = None;
+            self.cursor_buf.clear();
+            self.part_buf.clear();
+            self.sel_buf.clear();
+
+            let data = if let Some((index, dirty)) = tab.prepare_draw(i) {
+                if !dirty {
+                    continue;
+                }
+
+                line_no = Some(index + 1);
+                tab.line_data(index, &mut self.part_buf, &mut self.sel_buf, &mut self.cursor_buf)
+            } else {
+                tab::DirtyLine { tab_width_m1: 0, text: "" }
             };
 
             // cursors are sorted
             let text = ColoredText::new(
-                &self.part_buf,
-                &self.cursor_buf,
-                data.text,
                 data.tab_width_m1,
+                &self.cursor_buf,
+                &self.part_buf,
+                &self.sel_buf,
                 &self.theme,
+                data.text,
             );
 
-            self.interface.set_code_row(i, data.line_no, text);
+            self.interface.set_code_row(i, line_no, text);
         }
     }
 
@@ -112,8 +130,8 @@ impl Globals {
                     tab.save();
                     update_list = true;
                 },
-                UserInput::Backspace => {
-                    tab.backspace_once();
+                UserInput::Backspace(forward) => {
+                    tab.backspace_once(forward);
                     update_list = no_mod;
                 },
                 UserInput::Scroll(delta) if self.tree_hover.is_none() => tab.scroll(delta),
@@ -171,8 +189,8 @@ impl Globals {
                     update_tree = self.tree_hover.take().is_some();
                     update_list = self.tab_hover.take().is_some();
                 },
-                UserInput::VerticalJump(d) => tab.vertical_jump(d),
-                UserInput::HorizontalJump(d) => tab.horizontal_jump(d),
+                UserInput::HorizontalJump(d, s) => tab.horizontal_jump(d, s),
+                UserInput::VerticalJump(d, s) => tab.vertical_jump(d, s),
                 UserInput::Resize(w, h) => self.interface.resize(w, h),
                 UserInput::NoOp => (),
             }
@@ -195,9 +213,10 @@ fn main() -> Result<(), &'static str> {
 
     let mut globals = Globals {
         // state
+        cursor_buf: Vec::new(),
         list: TabList::new(),
         part_buf: Vec::new(),
-        cursor_buf: Vec::new(),
+        sel_buf: Vec::new(),
         select_pos: None,
         tree_hover: None,
         tab_hover: None,

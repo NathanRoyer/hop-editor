@@ -3,22 +3,12 @@ use std::{io, fs, cmp};
 use std::sync::Arc;
 
 use crate::syntax::{Range, SyntaxFile, SyntaxConfig, LineContext};
-use crate::interface::TextPart;
+use crate::colored_text::{Part as TextPart, Selection};
 use crate::confirm;
 
 const CLOSE_WARNING: &str = "[UNSAVED FILE]\nThis file has unsaved edits!\n- Press Enter to discard the edits.\n- Press Escape to cancel.";
 
 pub type TabList = Vec<(bool, Arc<str>)>;
-
-fn strip_cr<'a>(text: &'a str, eol_cr: &mut bool) -> &'a str {
-    let (text, cr) = match text.strip_suffix('\r') {
-        Some(text) => (text, true),
-        None => (text, false),
-    };
-
-    *eol_cr = cr;
-    text
-}
 
 #[derive(Clone, Debug, Default)]
 pub struct Line {
@@ -29,23 +19,7 @@ pub struct Line {
     dirty: bool,
 }
 
-impl Line {
-    fn len_chars(&self) -> usize {
-        self.buffer.chars().count()
-    }
-
-    fn len_until(&self, x: usize) -> usize {
-        self
-            .buffer
-            .chars()
-            .take(x)
-            .map(|c| c.len_utf8())
-            .sum()
-    }
-}
-
 pub struct DirtyLine<'a> {
-    pub line_no: Option<usize>,
     pub tab_width_m1: usize,
     pub text: &'a str,
 }
@@ -55,7 +29,8 @@ pub struct Cursor {
     // x is in char unit, not byte
     x: usize,
     y: usize,
-    range: usize,
+    sel_x: isize,
+    sel_y: isize,
 }
 
 pub struct Tab {
@@ -89,6 +64,28 @@ fn file_name(path: &Option<String>) -> Arc<str> {
     };
 
     name.into()
+}
+
+impl Line {
+    fn len_chars(&self) -> usize {
+        self.buffer.chars().count()
+    }
+
+    fn len_until(&self, x: usize) -> usize {
+        self
+            .buffer
+            .chars()
+            .take(x)
+            .map(|c| c.len_utf8())
+            .sum()
+    }
+
+    fn half_select(&self, first_half: bool, x_char: usize) -> Selection {
+        match first_half {
+            true => Selection::new(0, x_char),
+            false => Selection::new(x_char, self.len_chars() - x_char),
+        }
+    }
 }
 
 impl Tab {
@@ -190,9 +187,7 @@ impl Tab {
     }
 
     pub fn insert_text(&mut self, text: &str) {
-        let cursors = 0..self.cursors.len();
-
-        for c in cursors.rev() {
+        for c in 0..self.cursors.len() {
             let mut iter = text.split('\n');
             let mut eol_cr = false;
 
@@ -246,10 +241,7 @@ impl Tab {
         }
     }
 
-    fn merge_with_prev_line(&mut self, c: usize) {
-        let this_y = self.cursors[c].y;
-        let prev_y = this_y.checked_sub(1).expect("no previous line!");
-
+    fn merge_with_prev_line(&mut self, c: usize, this_y: usize, prev_y: usize) {
         let mut line = self.lines.remove(this_y);
         let buf = take(&mut line.buffer);
 
@@ -263,7 +255,12 @@ impl Tab {
 
     fn backspace(&mut self, c: usize, mut num_chars: usize) {
         while self.cursors[c].x < num_chars {
-            self.merge_with_prev_line(c);
+            let this_y = self.cursors[c].y;
+
+            if let Some(prev_y) = this_y.checked_sub(1) {
+                self.merge_with_prev_line(c, this_y, prev_y);
+            };
+
             num_chars -= 1;
         }
 
@@ -280,38 +277,81 @@ impl Tab {
         self.backspace_cursor(c, false, -(num_chars as isize));
     }
 
-    pub fn backspace_once(&mut self) {
-        for c in 0..self.cursors.len() {
-            self.backspace(c, 1);
+    pub fn backspace_once(&mut self, forward: bool) {
+        if !self.erase_selection() {
+            if forward {
+                self.horizontal_jump(1, false);
+            }
+
+            for c in 0..self.cursors.len() {
+                self.backspace(c, 1);
+            }
         }
 
         self.modified = true;
     }
 
-    pub fn dirty_line<'a>(
-        &'a mut self,
-        index: u16,
-        part_buf: &mut Vec<TextPart>,
-        cursors: &mut Vec<usize>,
-    ) -> Option<DirtyLine<'a>> {
+    pub fn erase_selection(&mut self) -> bool {
+        let range = 0..self.cursors.len();
+        let mut it_happened = false;
+
+        for c in range.rev() {
+            let cursor = &mut self.cursors[c];
+            if cursor.sel_x == 0 && cursor.sel_y == 0 {
+                continue;
+            }
+
+            // ensures sel is earlier than cursor
+            cursor.sel_jump(false);
+            it_happened = true;
+
+            loop {
+                let cursor = &mut self.cursors[c];
+
+                if cursor.sel_y == 0 {
+                    break;
+                }
+
+                let x = cursor.x;
+                cursor.sel_y += 1;
+                cursor.sel_x += x as isize;
+                self.backspace(c, x + 1);
+
+                let cursor = &mut self.cursors[c];
+                cursor.sel_x -= cursor.x as isize;
+            }
+
+            let cursor = &mut self.cursors[c];
+            let sel_x = take(&mut cursor.sel_x);
+            self.backspace(c, -sel_x as usize);
+        }
+
+        if it_happened {
+            // todo: do better
+            self.set_fully_dirty();
+        }
+
+        return it_happened;
+    }
+
+    pub fn prepare_draw(&mut self, index: u16) -> Option<(usize, bool)> {
         let y = self.scroll + (index as isize);
+        let y = usize::try_from(y).ok()?;
+        let line = self.lines.get_mut(y)?;
+        Some((y, take(&mut line.dirty)))
+    }
+
+    pub fn line_data<'a>(
+        &'a mut self,
+        index: usize,
+        part_buf: &mut Vec<TextPart>,
+        sel_buf: &mut Vec<Selection>,
+        cursors: &mut Vec<usize>,
+    ) -> DirtyLine<'a> {
         let tab_width_m1 = self.tab_width_m1;
-        part_buf.clear();
-        cursors.clear();
-
-        let Ok(y) = usize::try_from(y) else {
-            part_buf.push(("wspace", 0));
-            return Some(DirtyLine { line_no: None, tab_width_m1, text: "" });
-        };
-
-        let Some(line) = self.lines.get_mut(y) else {
-            part_buf.push(("wspace", 0));
-            return Some(DirtyLine { line_no: None, tab_width_m1, text: "" });
-        };
-
-        // return if not dirty
-        take(&mut line.dirty).then_some(())?;
+        let line = &mut self.lines[index];
         let text = &line.buffer;
+        let len = text.len();
         let mut covered = 0;
 
         // todo: maybe remove this useless copying
@@ -321,21 +361,46 @@ impl Tab {
             covered += range.len;
         }
 
-        if covered < text.len() {
-            let missing = text.len() - covered;
+        // abnormal
+        if covered < len {
+            let missing = len - covered;
             part_buf.push(("wspace", missing));
         }
 
-        let iter_c = self
-            .cursors
-            .iter()
-            .filter(|c| c.y == y)
-            .map(|c| c.x);
+        for cursor in &self.cursors {
+            let forward_sel = cursor.sel_y < 0;
 
-        cursors.extend(iter_c);
-        let line_no = Some(y + 1);
+            if cursor.covers(index) {
+                sel_buf.clear();
+                let len = line.len_chars();
+                sel_buf.push(Selection::new(0, len));
+                return DirtyLine { tab_width_m1, text };
+            }
 
-        Some(DirtyLine { line_no, tab_width_m1, text })
+            if cursor.y == index {
+                cursors.push(cursor.x);
+
+                if cursor.sel_y != 0 {
+                    sel_buf.push(line.half_select(forward_sel, cursor.x));
+                } else if cursor.sel_x < 0 {
+                    let orig_x = cursor.x - ((-cursor.sel_x) as usize);
+                    let len = cursor.x - orig_x;
+                    sel_buf.push(Selection::new(orig_x, len));
+                } else if cursor.sel_x > 0 {
+                    let end_x = cursor.x + (cursor.sel_x as usize);
+                    let len = end_x - cursor.x;
+                    sel_buf.push(Selection::new(cursor.x, len));
+                }
+            }
+
+            if cursor.touches(index) {
+                if let Some(orig_x) = cursor.x.checked_add_signed(cursor.sel_x) {
+                    sel_buf.push(line.half_select(!forward_sel, orig_x));
+                }
+            }
+        }
+
+        DirtyLine { tab_width_m1, text }
     }
 
     fn rebuild(&mut self) {
@@ -410,19 +475,22 @@ impl Tab {
         self.set_lines_dirty(0);
     }
 
-    pub fn vertical_jump(&mut self, delta: isize) {
+    pub fn vertical_jump(&mut self, delta: isize, select: bool) {
+        self.unselect_if_not(select, None);
+
         for c in 0..self.cursors.len() {
             let char_w = |c| match c {
                 '\t' => self.tab_width_m1 + 1,
                 _ => 1,
             };
 
-            // to-do: check if we're not going
-            // back and forth for nothing
-            let cursor = self.cursors[c];
+            // to-do: check if we're not going back and
+            // forth for nothing with cursor indices
+            let cursor = &mut self.cursors[c];
             let line = &self.lines[cursor.y];
             let i = line.len_until(cursor.x);
             let x = line.buffer[..i].chars().map(char_w).sum();
+            let cx_backup = cursor.x as isize;
 
             let y = cursor.y as isize + delta;
             if let Ok(y) = usize::try_from(y) {
@@ -430,44 +498,64 @@ impl Tab {
                     self.seek_in_line(c, y, x);
                 }
             }
+
+            if select {
+                let cursor = &mut self.cursors[c];
+                cursor.sel_x += cx_backup - cursor.x as isize;
+                cursor.sel_y -= delta;
+            }
         }
 
         self.check_cursors();
     }
 
-    fn backoff_cursor_once(&mut self, c: usize) {
+    fn backoff_cursor_once(&mut self, c: usize, select: bool) {
         let cursor = &mut self.cursors[c];
 
         if cursor.x != 0 {
             cursor.x -= 1;
+            cursor.sel_x += select as isize;
         } else if cursor.y != 0 {
             cursor.y -= 1;
             let line = &self.lines[cursor.y];
             cursor.x = line.len_chars();
+
+            if select {
+                cursor.sel_x -= cursor.x as isize;
+                cursor.sel_y += 1;
+            }
         }
     }
 
-    fn advance_cursor_once(&mut self, c: usize) {
+    fn advance_cursor_once(&mut self, c: usize, select: bool) {
         let cursor = &mut self.cursors[c];
 
         let line = &self.lines[cursor.y];
         let lines = self.lines.len();
         let next_x = cursor.x + 1;
         let next_y = cursor.y + 1;
+        let chars = line.len_chars();
 
         let has_next_line = next_y < lines;
-        let overflow = cursor.x >= line.len_chars();
+        let overflow = next_x > chars;
 
         if overflow & has_next_line {
             cursor.x = 0;
             cursor.y = next_y;
+
+            if select {
+                cursor.sel_y -= 1;
+                cursor.sel_x = (chars as isize) + cursor.sel_x;
+            }
         } else if !overflow {
             cursor.x = next_x;
+            cursor.sel_x -= select as isize;
         }
     }
 
-    pub fn horizontal_jump(&mut self, delta: isize) {
-        type Sig = (usize, fn(&mut Tab, usize));
+    pub fn horizontal_jump(&mut self, delta: isize, select: bool) {
+        type Sig = (usize, fn(&mut Tab, usize, bool));
+        self.unselect_if_not(select, Some(delta < 0));
 
         let (num_iter, callback): Sig = match delta < 0 {
             true => ((-delta) as usize, Self::backoff_cursor_once),
@@ -478,7 +566,7 @@ impl Tab {
             for _ in 0..num_iter {
                 let y = self.cursors[c].y;
                 self.lines[y].dirty = true;
-                callback(self, c);
+                callback(self, c, select);
             }
 
             let y = self.cursors[c].y;
@@ -512,6 +600,7 @@ impl Tab {
     }
 
     pub fn seek(&mut self, x: u16, y: u16, append: bool) {
+        self.unselect_if_not(append, None);
         let max_y = self.lines.len() as isize;
         let y = y as isize + self.scroll;
 
@@ -531,6 +620,31 @@ impl Tab {
         self.cursors.push(Cursor::default());
         self.seek_in_line(c, y as usize, x as usize);
         self.check_cursors();
+    }
+
+    pub fn unselect_if_not(&mut self, select: bool, jump_dir: Option<bool>) {
+        if select {
+            return;
+        }
+
+        for cursor in self.cursors.iter_mut() {
+            if cursor.sel_x == 0 && cursor.sel_y == 0 {
+                continue;
+            }
+
+            for (i, line) in self.lines.iter_mut().enumerate() {
+                if cursor.y == i || cursor.covers(i) || cursor.touches(i) {
+                    line.dirty = true;
+                }
+            }
+
+            if let Some(dir) = jump_dir {
+                cursor.sel_jump(dir);
+            }
+
+            cursor.sel_x = 0;
+            cursor.sel_y = 0;
+        }
     }
 
     pub fn check_cursors(&mut self) {
@@ -646,6 +760,44 @@ impl TabMap {
     }
 }
 
+impl Cursor {
+    fn covers(&self, y: usize) -> bool {
+        if self.y < y {
+            let diff = y - self.y;
+            self.sel_y > (diff as isize)
+        } else if self.y > y {
+            let diff = self.y - y;
+            self.sel_y < -(diff as isize)
+        } else {
+            false
+        }
+    }
+
+    fn touches(&self, y: usize) -> bool {
+        let diff = (y as isize) - (self.y as isize);
+        self.sel_y != 0 && diff == self.sel_y
+    }
+
+    fn sel_jump(&mut self, to_start: bool) {
+        let cursor_at_sel_end = match self.sel_y == 0 {
+            true => self.sel_x < 0,
+            false => self.sel_y < 0,
+        };
+
+        if to_start == cursor_at_sel_end {
+            let do_jump = |a: usize, b: isize| {
+                a.checked_add_signed(b).unwrap_or(a)
+            };
+
+            self.x = do_jump(self.x, self.sel_x);
+            self.y = do_jump(self.y, self.sel_y);
+
+            self.sel_x = -self.sel_x;
+            self.sel_y = -self.sel_y;
+        }
+    }
+}
+
 impl PartialOrd for Cursor {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
@@ -659,4 +811,14 @@ impl Ord for Cursor {
             false => self.y.cmp(&other.y),
         }
     }
+}
+
+fn strip_cr<'a>(text: &'a str, eol_cr: &mut bool) -> &'a str {
+    let (text, cr) = match text.strip_suffix('\r') {
+        Some(text) => (text, true),
+        None => (text, false),
+    };
+
+    *eol_cr = cr;
+    text
 }

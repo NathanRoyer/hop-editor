@@ -10,7 +10,7 @@ categories = [ 'command-line-utilities' ]
 license = 'MIT'
 
 [profile.release]
-debug = true
+overflow-checks = true
 
 [dependencies]
 crossterm = { version = "0.29", default-features = false, features = ['bracketed-paste', 'events'] }

@@ -1,5 +1,3 @@
-#![allow(unused_variables)]
-#![allow(unused_imports)]
 #![allow(dead_code)]
 
 use crossterm::{*, terminal::*, event::*, cursor::*, style::*};
@@ -8,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::fmt::{self, Write as _};
 use std::mem::take;
 
+use crate::colored_text::ColoredText;
 use crate::theme::Theme;
 use crate::tab::TabList;
 use crate::confirm;
@@ -16,6 +15,11 @@ const TREE_WIDTH: u16 = 40;
 const TABS_HEIGHT: u16 = 3;
 const MENU_HEIGHT: u16 = 4;
 const LN_WIDTH: usize = 4;
+
+pub fn default_bg_color() -> Color {
+    // Color::from((0, 0, 0))
+    Color::Reset
+}
 
 static DIRTY: AtomicBool = AtomicBool::new(true);
 
@@ -34,14 +38,14 @@ pub enum UserInput {
     TabHover(u16),
     ClearHover,
     TabClick(u16),
-    Backspace,
+    Backspace(bool),
     Paste,
     Copy,
     Cut,
     Scroll(isize),
     Resize(u16, u16),
-    HorizontalJump(isize),
-    VerticalJump(isize),
+    HorizontalJump(isize, bool),
+    VerticalJump(isize, bool),
     NoOp,
 }
 
@@ -55,10 +59,6 @@ enum Location {
     LineNo(u16),
     Code(u16, u16),
 }
-
-pub type ModeName = &'static str;
-pub type PartLen = usize;
-pub type TextPart = (ModeName, PartLen);
 
 // todo get rid
 fn cut_len(text: &str, max: usize) -> (Option<usize>, usize) {
@@ -83,122 +83,6 @@ fn cut_len(text: &str, max: usize) -> (Option<usize>, usize) {
     (None, num_chars)
 }
 
-pub struct ColoredText<'a> {
-    parts: &'a [TextPart],
-    cursors: &'a [usize],
-    theme: &'a Theme,
-    text: &'a str,
-    tab_width_m1: usize,
-    max: usize,
-}
-
-impl<'a> ColoredText<'a> {
-    pub fn new(
-        parts: &'a [TextPart],
-        cursors: &'a [usize],
-        text: &'a str,
-        tab_width_m1: usize,
-        theme: &'a Theme,
-    ) -> Self {
-        Self { parts, theme, text, cursors, tab_width_m1, max: 0 }
-    }
-}
-
-fn write_rev(f: &mut fmt::Formatter, c: char) -> Result<(), fmt::Error> {
-    let rev1 = SetAttribute(Attribute::Reverse);
-    let rev2 = SetAttribute(Attribute::NoReverse);
-    write!(f, "{rev1}{c}{rev2}")
-}
-
-fn write_text_cursor(
-    f: &mut fmt::Formatter,
-    // sorted
-    cursors: &[usize],
-    color: Color,
-    text: &str,
-    num_taken: &mut usize,
-    num_visible: &mut usize,
-    tab_width_m1: usize,
-    max: usize,
-) -> Result<bool, fmt::Error> {
-    write!(f, "{}", SetForegroundColor(color))?;
-    let mut cursors = cursors.iter();
-    let mut cursor = cursors.next();
-
-    for c in text.chars() {
-        let mut c_disp = c;
-        let mut addition = 1;
-
-        if c == '\t' {
-            addition += tab_width_m1;
-            c_disp = ' ';
-        }
-
-        if *num_visible + addition >= max {
-            return Ok(true);
-        }
-
-        if Some(*num_taken) == cursor.copied() {
-            cursor = cursors.next();
-            write_rev(f, c_disp)?;
-        } else {
-            write!(f, "{c_disp}")?;
-        }
-
-        if c == '\t' {
-            let _ = write!(f, "{:^1$}", "", tab_width_m1);
-        }
-
-        *num_visible += addition;
-        *num_taken += 1;
-    }
-
-    Ok(false)
-}
-
-impl<'a> fmt::Display for ColoredText<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let mut overflow = false;
-        let mut num_visible = 0;
-        let mut num_taken = 0;
-        let mut offset = 0;
-
-        for (mode_name, len) in self.parts {
-            let end = offset + len;
-            let text = &self.text[offset..end];
-            let color = self.theme.get_ansi(mode_name);
-
-            overflow = write_text_cursor(
-                f,
-                self.cursors,
-                color,
-                text,
-                &mut num_taken,
-                &mut num_visible,
-                self.tab_width_m1,
-                self.max,
-            )?;
-
-            if overflow {
-                write!(f, "{}…", SetForegroundColor(Color::Reset))?;
-                break;
-            }
-
-            offset = end;
-        }
-
-        if self.cursors.contains(&offset) {
-            if overflow {
-                write!(f, "{}", MoveLeft(1))?;
-            }
-
-            write_rev(f, ' ')?;
-        }
-
-        Ok(())
-    }
-}
-
 pub struct Interface {
     str_buf: String,
     stdout: Stdout,
@@ -212,6 +96,7 @@ impl Interface {
         queue!(stdout, SavePosition).unwrap();
         queue!(stdout, EnterAlternateScreen).unwrap();
         queue!(stdout, EnableMouseCapture).unwrap();
+        queue!(stdout, SetBackgroundColor(default_bg_color())).unwrap();
         queue!(stdout, Hide).unwrap();
         let _ = enable_raw_mode();
         let _ = stdout.flush();
@@ -311,7 +196,7 @@ impl Interface {
         let (cut, chars) = cut_len(text, max);
         let cut = cut.unwrap_or(text.len());
         self.write_text(0, MENU_HEIGHT + 1 + index, &text[..cut]);
-        queue!(self.stdout, SetBackgroundColor(Color::Reset)).unwrap();
+        queue!(self.stdout, SetBackgroundColor(default_bg_color())).unwrap();
         let _ = write!(self.stdout, "{:1$}", "", max - chars);
 
         let _ = self.stdout.flush();
@@ -332,7 +217,7 @@ impl Interface {
         self.write_text(x, y, &buf);
 
         x += LN_WIDTH as u16 + 2;
-        text.max = self.width.saturating_sub(x) as usize;
+        text.set_max(self.width.saturating_sub(x) as usize);
         self.write_text(x, y, text);
         let _ = queue!(self.stdout, Clear(ClearType::UntilNewLine));
 
@@ -364,7 +249,7 @@ impl Interface {
 
             let bg_color = match hovered {
                 true => theme.get_ansi("hover-bg"),
-                false => Color::Reset,
+                false => default_bg_color(),
             };
 
             let fg_color = match (i == focused, modified) {
@@ -382,7 +267,7 @@ impl Interface {
             let bg_color = SetBackgroundColor(bg_color);
             let fg_color = SetForegroundColor(fg_color);
             let fg_reset = SetForegroundColor(Color::Reset);
-            let bg_reset = SetBackgroundColor(Color::Reset);
+            let bg_reset = SetBackgroundColor(default_bg_color());
             let no_line = Attribute::NoUnderline;
 
             let _ = write!(self.stdout, " {fg_color}{bg_color}");
@@ -402,11 +287,11 @@ impl Interface {
         let _ = self.stdout.flush();
     }
 
-    pub fn set_toolbar(&self, items: &[&str]) {
+    pub fn set_toolbar(&self, _items: &[&str]) {
         todo!()
     }
 
-    pub fn set_status(&self, status: &str) {
+    pub fn set_status(&self, _status: &str) {
         todo!()
     }
 
@@ -457,8 +342,8 @@ impl Interface {
 
                 if e.modifiers.contains(KeyModifiers::CONTROL) {
                     match e.code {
-                        KeyCode::Right => UserInput::HorizontalJump(10),
-                        KeyCode::Left => UserInput::HorizontalJump(-10),
+                        KeyCode::Right => UserInput::HorizontalJump(10, shift),
+                        KeyCode::Left => UserInput::HorizontalJump(-10, shift),
                         KeyCode::Char('w') => UserInput::CloseTab,
                         KeyCode::Char('q') => UserInput::Quit,
                         KeyCode::Char('s') => UserInput::Save,
@@ -472,11 +357,12 @@ impl Interface {
                         KeyCode::PageUp if shift => UserInput::NextTab(false),
                         KeyCode::PageDown => UserInput::Scroll(code_height),
                         KeyCode::PageUp => UserInput::Scroll(-code_height),
-                        KeyCode::Right => UserInput::HorizontalJump(1),
-                        KeyCode::Left => UserInput::HorizontalJump(-1),
-                        KeyCode::Down => UserInput::VerticalJump(1),
-                        KeyCode::Up => UserInput::VerticalJump(-1),
-                        KeyCode::Backspace => UserInput::Backspace,
+                        KeyCode::Right => UserInput::HorizontalJump(1, shift),
+                        KeyCode::Left => UserInput::HorizontalJump(-1, shift),
+                        KeyCode::Down => UserInput::VerticalJump(1, shift),
+                        KeyCode::Up => UserInput::VerticalJump(-1, shift),
+                        KeyCode::Backspace => UserInput::Backspace(false),
+                        KeyCode::Delete => UserInput::Backspace(true),
                         KeyCode::Char(c) => UserInput::Insert(c),
                         KeyCode::Enter => UserInput::Insert('\n'),
                         KeyCode::Tab => UserInput::Insert('\t'),
@@ -518,7 +404,7 @@ impl Interface {
                         Moved => UserInput::TabHover(x),
                         _ => debug(),
                     },
-                    Location::LineNo(y) => match e.kind {
+                    Location::LineNo(_y) => match e.kind {
                         MouseEventKind::Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
                         _ => debug(),
@@ -588,6 +474,7 @@ pub fn _confirm(text: String) -> bool {
 pub fn restore_term() {
     let mut stdout = stdout();
     let _ = disable_raw_mode();
+    queue!(stdout, SetBackgroundColor(Color::Reset)).unwrap();
     queue!(stdout, DisableMouseCapture).unwrap();
     queue!(stdout, LeaveAlternateScreen).unwrap();
     queue!(stdout, RestorePosition).unwrap();
