@@ -74,6 +74,10 @@ impl Cursor {
         self.sel_y != 0 && diff == self.sel_y
     }
 
+    fn selects(&self) -> bool {
+        (self.sel_y != 0) | (self.sel_x != 0)
+    }
+
     fn is_at_sel_end(&self) -> bool {
         match self.sel_y == 0 {
             true => self.sel_x < 0,

@@ -46,6 +46,7 @@ pub enum UserInput {
     Resize(u16, u16),
     HorizontalJump(isize, bool),
     VerticalJump(isize, bool),
+    AutoSelect,
     NoOp,
 }
 
@@ -344,6 +345,7 @@ impl Interface {
                     match e.code {
                         KeyCode::Right => UserInput::HorizontalJump(10, shift),
                         KeyCode::Left => UserInput::HorizontalJump(-10, shift),
+                        KeyCode::Char('d') => UserInput::AutoSelect,
                         KeyCode::Char('w') => UserInput::CloseTab,
                         KeyCode::Char('q') => UserInput::Quit,
                         KeyCode::Char('s') => UserInput::Save,

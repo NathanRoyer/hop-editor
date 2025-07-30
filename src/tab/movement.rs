@@ -126,11 +126,21 @@ impl Tab {
     }
 
     pub fn seek(&mut self, x: u16, y: u16, append: bool) {
-        self.unselect_if_not(append, None);
-
         let Some(y) = self.line_index(y) else {
             return;
         };
+
+        let x = x as usize;
+        let c = self.latest_cursor();
+        let cursor = &self.cursors[c];
+        let same_xy = (cursor.x == x) & (cursor.y == y);
+
+        if same_xy && !cursor.selects() {
+            self.auto_select();
+            return;
+        }
+
+        self.unselect_if_not(append, None);
 
         if !append {
             for cursor in &self.cursors {
@@ -142,7 +152,7 @@ impl Tab {
 
         let id = self.cursors.len();
         self.cursors.push(Cursor::new(id));
-        self.seek_in_line(id, y as usize, x as usize);
+        self.seek_in_line(id, y, x);
         self.check_cursors();
     }
 
@@ -180,7 +190,7 @@ impl Tab {
         }
 
         for cursor in self.cursors.iter_mut() {
-            if cursor.sel_x == 0 && cursor.sel_y == 0 {
+            if !cursor.selects() {
                 continue;
             }
 
@@ -197,5 +207,34 @@ impl Tab {
             cursor.sel_x = 0;
             cursor.sel_y = 0;
         }
+    }
+
+    pub fn auto_select(&mut self) {
+        self.highlight();
+        let c = self.latest_cursor();
+
+        let cursor = &mut self.cursors[c];
+        let line = &mut self.lines[cursor.y];
+        let mut proc_chars = 0;
+        let mut offset = 0;
+
+        for range in &line.ranges {
+            let end = offset + range.len;
+            let slice = &line.buffer[offset..end];
+            let chars = slice.chars().count();
+            let next = proc_chars + chars;
+
+            if cursor.x < next {
+                cursor.x = next;
+                cursor.sel_y = 0;
+                cursor.sel_x = -(chars as isize);
+                break;
+            }
+
+            proc_chars = next;
+            offset = end;
+        }
+
+        line.dirty = true;
     }
 }

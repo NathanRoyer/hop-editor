@@ -184,6 +184,7 @@ impl Globals {
                 UserInput::HorizontalJump(d, s) => tab.horizontal_jump(d, s),
                 UserInput::VerticalJump(d, s) => tab.vertical_jump(d, s),
                 UserInput::Resize(w, h) => self.interface.resize(w, h),
+                UserInput::AutoSelect => tab.auto_select(),
                 UserInput::NoOp => (),
             }
 
