@@ -127,12 +127,10 @@ impl Tab {
 
     pub fn seek(&mut self, x: u16, y: u16, append: bool) {
         self.unselect_if_not(append, None);
-        let max_y = self.lines.len() as isize;
-        let y = y as isize + self.scroll;
 
-        if (y < 0) || (y >= max_y) {
+        let Some(y) = self.line_index(y) else {
             return;
-        }
+        };
 
         if !append {
             for cursor in &self.cursors {
@@ -142,13 +140,43 @@ impl Tab {
             self.cursors.clear();
         }
 
-        let c = self.cursors.len();
-        self.cursors.push(Cursor::default());
-        self.seek_in_line(c, y as usize, x as usize);
+        let id = self.cursors.len();
+        self.cursors.push(Cursor::new(id));
+        self.seek_in_line(id, y as usize, x as usize);
         self.check_cursors();
     }
 
-    pub fn unselect_if_not(&mut self, select: bool, jump_dir: Option<bool>) {
+    pub fn drag_to(&mut self, x: u16, y: u16) {
+        let Some(y) = self.line_index(y) else {
+            return;
+        };
+
+        let maybe_cursor = self
+            .cursors
+            .iter_mut()
+            .enumerate()
+            .max_by_key(|(_, c)| c.id);
+
+        let Some((c, cursor)) = maybe_cursor else {
+            return;
+        };
+
+        cursor.swap_sel_direction();
+        let backup = *cursor;
+
+        self.seek_in_line(c, y as usize, x as usize);
+
+        let cursor = &mut self.cursors[c];
+        cursor.sel_x = (backup.x as isize) - (cursor.x as isize);
+        cursor.sel_y = (backup.y as isize) - (cursor.y as isize);
+
+        self.check_cursors();
+
+        // todo: do better
+        self.set_fully_dirty();
+    }
+
+    fn unselect_if_not(&mut self, select: bool, jump_dir: Option<bool>) {
         if select {
             return;
         }

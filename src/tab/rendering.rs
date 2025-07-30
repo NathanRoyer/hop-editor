@@ -36,11 +36,10 @@ impl Tab {
         }
     }
 
-    pub fn prepare_draw(&mut self, index: u16) -> Option<(usize, bool)> {
-        let y = self.scroll + (index as isize);
-        let y = usize::try_from(y).ok()?;
-        let line = self.lines.get_mut(y)?;
-        Some((y, take(&mut line.dirty)))
+    pub fn prepare_draw(&mut self, y: u16) -> Option<(usize, bool)> {
+        let i = self.line_index(y)?;
+        let line = self.lines.get_mut(i)?;
+        Some((i, take(&mut line.dirty)))
     }
 
     pub fn line_data<'a>(

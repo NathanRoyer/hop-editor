@@ -25,7 +25,6 @@ taking a lot of inspiration from Sublime Text.
 
 ## To-Do List
 
-- text selection
 - undo / redo (C-z, C-y)
-- find next duplicate (C-d)
+- select next occurence (C-d)
 - find (C-f)

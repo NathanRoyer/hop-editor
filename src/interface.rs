@@ -396,22 +396,26 @@ impl Interface {
                         MouseEventKind::Up(_) => UserInput::NoOp,
                         Down(Left) => UserInput::TreeClick(y),
                         Moved => UserInput::TreeHover(y),
+                        Drag(Left) => UserInput::NoOp,
                         _ => debug(),
                     },
                     Location::Tab(x) => match e.kind {
                         MouseEventKind::Up(_) => UserInput::NoOp,
                         Down(Left) => UserInput::TabClick(x),
                         Moved => UserInput::TabHover(x),
+                        Drag(Left) => UserInput::NoOp,
                         _ => debug(),
                     },
                     Location::LineNo(_y) => match e.kind {
                         MouseEventKind::Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
+                        Drag(Left) => UserInput::NoOp,
                         _ => debug(),
                     },
                     Location::PanelSep => match e.kind {
                         MouseEventKind::Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
+                        Drag(Left) => UserInput::NoOp,
                         _ => debug(),
                     },
                     Location::MenuEdge => match e.kind {

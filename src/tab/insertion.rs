@@ -58,6 +58,8 @@ impl Tab {
     }
 
     pub fn insert_text(&mut self, text: &str) {
+        self.erase_selection();
+
         for c in 0..self.cursors.len() {
             let mut iter = text.split('\n');
             let mut eol_cr = false;

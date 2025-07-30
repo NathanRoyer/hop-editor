@@ -29,15 +29,6 @@ pub struct DirtyLine<'a> {
     pub text: &'a str,
 }
 
-#[derive(Copy, Clone, Default, PartialEq, Eq)]
-pub struct Cursor {
-    // x is in char unit, not byte
-    x: usize,
-    y: usize,
-    sel_x: isize,
-    sel_y: isize,
-}
-
 pub struct Tab {
     file_path: Option<String>,
     tmp_buf: String,
@@ -59,16 +50,58 @@ pub struct TabMap {
     current: usize,
 }
 
-fn file_name(path: &Option<String>) -> Arc<str> {
-    let name = match path {
-        Some(path) => match path.rsplit_once('/') {
-            Some((_, name)) => name,
-            None => path,
-        },
-        None => "[unnamed]",
-    };
+#[derive(Copy, Clone, PartialEq, Eq)]
+struct Cursor {
+    // x is in char unit, not byte
+    x: usize,
+    y: usize,
+    sel_x: isize,
+    sel_y: isize,
+    id: usize,
+}
 
-    name.into()
+impl Cursor {
+    fn new(id: usize) -> Self {
+        Self { x: 0, y: 0, sel_x: 0, sel_y: 0, id }
+    }
+
+    fn covers(&self, y: usize) -> bool {
+        match self.y.cmp(&y) {
+            cmp::Ordering::Greater => self.sel_y < -((self.y - y) as isize),
+            cmp::Ordering::Less => self.sel_y > ((y - self.y) as isize),
+            cmp::Ordering::Equal => false,
+        }
+    }
+
+    fn touches(&self, y: usize) -> bool {
+        let diff = (y as isize) - (self.y as isize);
+        self.sel_y != 0 && diff == self.sel_y
+    }
+
+    fn is_at_sel_end(&self) -> bool {
+        match self.sel_y == 0 {
+            true => self.sel_x < 0,
+            false => self.sel_y < 0,
+        }
+    }
+
+    fn swap_sel_direction(&mut self) {
+        let do_jump = |a: usize, b: isize| {
+            a.checked_add_signed(b).unwrap_or(a)
+        };
+
+        self.x = do_jump(self.x, self.sel_x);
+        self.y = do_jump(self.y, self.sel_y);
+
+        self.sel_x = -self.sel_x;
+        self.sel_y = -self.sel_y;
+    }
+
+    fn sel_jump(&mut self, to_start: bool) {
+        if to_start == self.is_at_sel_end() {
+            self.swap_sel_direction();
+        }
+    }
 }
 
 impl Line {
@@ -110,7 +143,7 @@ impl Tab {
             // state
             lines: vec![line],
             scroll: 0,
-            cursors: vec![Cursor::default()],
+            cursors: vec![Cursor::new(0)],
             modified: false,
 
             // settings
@@ -122,7 +155,7 @@ impl Tab {
         this.modified = false;
         this.tmp_buf = text;
 
-        this.cursors[0] = Cursor::default();
+        this.cursors[0] = Cursor::new(0);
 
         this
     }
@@ -133,6 +166,12 @@ impl Tab {
 
     pub fn modified(&self) -> bool {
         self.modified
+    }
+
+    fn line_index(&self, screen_y: u16) -> Option<usize> {
+        let max_y = self.lines.len() as isize;
+        let y = screen_y as isize + self.scroll;
+        ((y >= 0) & (y < max_y)).then_some(y as usize)
     }
 
     fn set_lines_dirty(&mut self, from_line: usize) {
@@ -272,40 +311,6 @@ impl TabMap {
     }
 }
 
-impl Cursor {
-    fn covers(&self, y: usize) -> bool {
-        match self.y.cmp(&y) {
-            cmp::Ordering::Greater => self.sel_y < -((self.y - y) as isize),
-            cmp::Ordering::Less => self.sel_y > ((y - self.y) as isize),
-            cmp::Ordering::Equal => false,
-        }
-    }
-
-    fn touches(&self, y: usize) -> bool {
-        let diff = (y as isize) - (self.y as isize);
-        self.sel_y != 0 && diff == self.sel_y
-    }
-
-    fn sel_jump(&mut self, to_start: bool) {
-        let cursor_at_sel_end = match self.sel_y == 0 {
-            true => self.sel_x < 0,
-            false => self.sel_y < 0,
-        };
-
-        if to_start == cursor_at_sel_end {
-            let do_jump = |a: usize, b: isize| {
-                a.checked_add_signed(b).unwrap_or(a)
-            };
-
-            self.x = do_jump(self.x, self.sel_x);
-            self.y = do_jump(self.y, self.sel_y);
-
-            self.sel_x = -self.sel_x;
-            self.sel_y = -self.sel_y;
-        }
-    }
-}
-
 impl PartialOrd for Cursor {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
@@ -329,4 +334,16 @@ fn strip_cr<'a>(text: &'a str, eol_cr: &mut bool) -> &'a str {
 
     *eol_cr = cr;
     text
+}
+
+fn file_name(path: &Option<String>) -> Arc<str> {
+    let name = match path {
+        Some(path) => match path.rsplit_once('/') {
+            Some((_, name)) => name,
+            None => path,
+        },
+        None => "[unnamed]",
+    };
+
+    name.into()
 }

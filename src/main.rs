@@ -26,7 +26,6 @@ pub struct Globals {
     // state
     tree_hover: Option<u16>,
     tab_hover: Option<u16>,
-    select_pos: Option<(u16, u16)>,
     list: TabList,
 
     // these three should stay sorted
@@ -141,16 +140,9 @@ impl Globals {
                     self.tree.check_overscroll(max);
                     update_tree = true;
                 },
-                UserInput::CodeSeek(x, y, push_c) => {
-                    tab.seek(x, y, push_c);
-                    self.select_pos = Some((x, y));
-                },
-                UserInput::CodeDrag(_, _) => if let Some((x, y)) = self.select_pos {
-                    self.select_pos = Some((x, y));
-                },
-                UserInput::ClearDrag => {
-                    self.select_pos.take();
-                },
+                UserInput::CodeSeek(x, y, push_c) => tab.seek(x, y, push_c),
+                UserInput::CodeDrag(x, y) => tab.drag_to(x, y),
+                UserInput::ClearDrag => (),
                 UserInput::TabClick(x) => {
                     if let Some(index) = self.interface.find_tab(x, &self.list) {
                         self.tabs.switch(index);
@@ -217,7 +209,6 @@ fn main() -> Result<(), &'static str> {
         list: TabList::new(),
         part_buf: Vec::new(),
         sel_buf: Vec::new(),
-        select_pos: None,
         tree_hover: None,
         tab_hover: None,
 
