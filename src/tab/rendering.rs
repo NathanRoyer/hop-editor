@@ -1,27 +1,8 @@
 use super::*;
 
 impl Tab {
-    fn get_syntax<'a>(&mut self, syntaxes: &'a SyntaxFile) -> Option<&'a SyntaxConfig> {
-        if self.tab_lang.is_none() {
-            let path = self.file_path.as_ref()?;
-            let (_, ext) = path.rsplit_once('.')?;
-
-            self.tab_lang = syntaxes.resolve_ext(ext).map(String::from);
-        }
-
-        let lang = self.tab_lang.as_ref()?;
-
-        let Some(syntax) = syntaxes.get(lang) else {
-            let valids: Vec<_> = syntaxes.inner.keys().collect();
-            confirm!("invalid syntax: {lang:?}\nvalid ones: {valids:?}");
-            return None;
-        };
-
-        Some(syntax)
-    }
-
-    pub fn highlight(&mut self, syntaxes: &SyntaxFile) {
-        let Some(syntax) = self.get_syntax(syntaxes) else {
+    pub fn highlight(&mut self) {
+        let Some(syntax) = self.syntax.as_ref() else {
             return;
         };
 

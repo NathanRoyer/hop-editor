@@ -33,15 +33,11 @@ pub struct Tab {
     file_path: Option<String>,
     tmp_buf: String,
     name: Arc<str>,
-
-    // state
     lines: Vec<Line>,
     scroll: isize,
     cursors: Vec<Cursor>,
     modified: bool,
-
-    // settings
-    tab_lang: Option<String>,
+    syntax: Option<Arc<SyntaxConfig>>,
     tab_width_m1: usize,
 }
 
@@ -128,6 +124,7 @@ impl Line {
 
 impl Tab {
     fn new(
+        syntax: Option<Arc<SyntaxConfig>>,
         file_path: Option<String>,
         text: String,
     ) -> Self {
@@ -139,16 +136,12 @@ impl Tab {
             file_path,
             tmp_buf: String::new(),
             name,
-
-            // state
             lines: vec![line],
             scroll: 0,
             cursors: vec![Cursor::new(0)],
             modified: false,
-
-            // settings
-            tab_lang: None,
             tab_width_m1: 3,
+            syntax,
         };
 
         this.insert_text(&text);
@@ -224,7 +217,7 @@ impl Tab {
 impl TabMap {
     pub fn new() -> Self {
         Self {
-            inner: vec![Tab::new(None, String::new())],
+            inner: vec![Tab::new(None, None, String::new())],
             current: 0,
         }
     }
@@ -243,7 +236,7 @@ impl TabMap {
         &mut self.inner[self.current]
     }
 
-    pub fn open(&mut self, file_path: String) -> Result<(), io::Error> {
+    pub fn open(&mut self, syntaxes: &SyntaxFile, file_path: String) -> Result<(), io::Error> {
         let cur_tab = self.current();
         let replace_current = cur_tab.file_path.is_none() && !cur_tab.modified;
 
@@ -254,8 +247,15 @@ impl TabMap {
             }
         }
 
+        let mut syntax = None;
+        if let Some((_, ext)) = file_path.rsplit_once('.') {
+            if let Some(lang) = syntaxes.resolve_ext(ext) {
+                syntax = syntaxes.get(lang);
+            }
+        }
+
         let tmp_buf = fs::read_to_string(&file_path)?;
-        let tab = Tab::new(Some(file_path), tmp_buf);
+        let tab = Tab::new(syntax, Some(file_path), tmp_buf);
         let new_idx = self.inner.len();
         self.inner.push(tab);
 
@@ -277,7 +277,7 @@ impl TabMap {
         self.inner.remove(index);
 
         if self.inner.is_empty() {
-            let tab = Tab::new(None, String::new());
+            let tab = Tab::new(None, None, String::new());
             self.inner.push(tab);
         }
 

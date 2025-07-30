@@ -146,20 +146,18 @@ impl Tab {
         self.check_cursors();
     }
 
+    pub fn latest_cursor(&mut self) -> usize {
+        let iter = self.cursors.iter().enumerate();
+        iter.max_by_key(|(_, c)| c.id).unwrap().0
+    }
+
     pub fn drag_to(&mut self, x: u16, y: u16) {
         let Some(y) = self.line_index(y) else {
             return;
         };
 
-        let maybe_cursor = self
-            .cursors
-            .iter_mut()
-            .enumerate()
-            .max_by_key(|(_, c)| c.id);
-
-        let Some((c, cursor)) = maybe_cursor else {
-            return;
-        };
+        let c = self.latest_cursor();
+        let cursor = &mut self.cursors[c];
 
         cursor.swap_sel_direction();
         let backup = *cursor;

@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use litemap::LiteMap;
-use core::mem::take;
+use std::sync::Arc;
+use std::mem::take;
 use RangeMode::*;
 
 /* CONFIG STRUCT */
@@ -60,7 +61,7 @@ pub struct SyntaxConfig {
 #[derive(Deserialize, Debug)]
 pub struct SyntaxFile {
     #[serde(flatten)]
-    pub inner: LiteMap<String, SyntaxConfig>,
+    pub inner: LiteMap<String, Arc<SyntaxConfig>>,
 }
 
 impl SyntaxFile {
@@ -74,8 +75,8 @@ impl SyntaxFile {
         }
     }
 
-    pub fn get(&self, syntax_name: &str) -> Option<&SyntaxConfig> {
-        self.inner.get(syntax_name)
+    pub fn get(&self, syntax_name: &str) -> Option<Arc<SyntaxConfig>> {
+        self.inner.get(syntax_name).cloned()
     }
 
     pub fn resolve_ext(&self, extension: &str) -> Option<&str> {

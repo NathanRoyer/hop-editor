@@ -49,7 +49,7 @@ impl Globals {
 
     fn update_code(&mut self) {
         let tab = self.tabs.current();
-        tab.highlight(&self.syntaxes);
+        tab.highlight();
 
         for i in 0..self.interface.code_height() {
             let mut line_no = None;
@@ -151,7 +151,7 @@ impl Globals {
                 },
                 UserInput::TreeClick(y) => {
                     if let Some(path) = self.tree.click(y) {
-                        if let Err(err) = self.tabs.open(path) {
+                        if let Err(err) = self.tabs.open(&self.syntaxes, path) {
                             confirm!("failed to open: {err:?}");
                         }
                     }
@@ -234,7 +234,7 @@ fn main() -> Result<(), &'static str> {
 
         if path.is_dir() {
             globals.tree.add_folder(path_str);
-        } else if let Err(err) = globals.tabs.open(path_str) {
+        } else if let Err(err) = globals.tabs.open(&globals.syntaxes, path_str) {
             println!("{err:?}");
             return Err("failed to open some files");
         }
