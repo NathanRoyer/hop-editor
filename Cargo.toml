@@ -12,6 +12,10 @@ license = 'MIT'
 [profile.release]
 overflow-checks = true
 
+[[bin]]
+name = "hop"
+path = "src/main.rs"
+
 [dependencies]
 crossterm = { version = "0.29", default-features = false, features = ['bracketed-paste', 'events'] }
 toml = { version = '0.9', default-features = false, features = ['serde', 'parse'] }
