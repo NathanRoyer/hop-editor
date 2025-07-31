@@ -165,6 +165,10 @@ impl Tab {
         self.modified
     }
 
+    pub fn path(&self) -> Option<&str> {
+        self.file_path.as_deref()
+    }
+
     fn line_index(&self, screen_y: u16) -> Option<usize> {
         let max_y = self.lines.len() as isize;
         let y = screen_y as isize + self.scroll;

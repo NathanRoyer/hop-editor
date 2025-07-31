@@ -25,14 +25,14 @@ static DIRTY: AtomicBool = AtomicBool::new(true);
 
 #[derive(Copy, Clone)]
 pub enum UserInput {
-    Quit,
+    Quit(bool),
     Save,
     CloseTab,
     NextTab(bool),
     Insert(char),
     CodeSeek(u16, u16, bool),
     CodeDrag(u16, u16),
-    ClearDrag,
+    Reveal,
     TreeClick(u16),
     TreeHover(u16),
     TabHover(u16),
@@ -184,21 +184,29 @@ impl Interface {
 
     pub fn set_tree_row(
         &mut self,
-        hovered: Option<u16>,
+        selected: bool,
+        hovered: bool,
         index: u16,
         text: &str,
         theme: &Theme,
     ) {
-        if hovered == Some(index) {
+        if hovered {
             let color = theme.get_ansi("hover-bg");
             queue!(self.stdout, SetBackgroundColor(color)).unwrap();
         }
+
+        if selected {
+            queue!(self.stdout, SetAttribute(Attribute::Reverse)).unwrap();
+        }
+
         let max = TREE_WIDTH.min(self.width) as usize;
         let (cut, chars) = cut_len(text, max);
         let cut = cut.unwrap_or(text.len());
         self.write_text(0, MENU_HEIGHT + 1 + index, &text[..cut]);
+
         queue!(self.stdout, SetBackgroundColor(default_bg_color())).unwrap();
-        let _ = write!(self.stdout, "{:1$}", "", max - chars);
+        queue!(self.stdout, SetAttribute(Attribute::NoReverse)).unwrap();
+        write!(self.stdout, "{:1$}", "", max - chars).unwrap();
 
         let _ = self.stdout.flush();
     }
@@ -347,7 +355,8 @@ impl Interface {
                         KeyCode::Left => UserInput::HorizontalJump(-10, shift),
                         KeyCode::Char('d') => UserInput::AutoSelect,
                         KeyCode::Char('w') => UserInput::CloseTab,
-                        KeyCode::Char('q') => UserInput::Quit,
+                        KeyCode::Char('o') => UserInput::Reveal,
+                        KeyCode::Char('q') => UserInput::Quit(true),
                         KeyCode::Char('s') => UserInput::Save,
                         KeyCode::Down => UserInput::Scroll(1),
                         KeyCode::Up => UserInput::Scroll(-1),
@@ -368,7 +377,7 @@ impl Interface {
                         KeyCode::Char(c) => UserInput::Insert(c),
                         KeyCode::Enter => UserInput::Insert('\n'),
                         KeyCode::Tab => UserInput::Insert('\t'),
-                        KeyCode::Esc => UserInput::Quit,
+                        KeyCode::Esc => UserInput::Quit(false),
                         _ => (confirm!("unk-ev: {e:?}"), UserInput::NoOp).1,
                     }
                 }
@@ -387,8 +396,8 @@ impl Interface {
                         MouseEventKind::ScrollDown => UserInput::Scroll(1),
                         MouseEventKind::ScrollUp => UserInput::Scroll(-1),
                         Down(Left) => UserInput::CodeSeek(x, y, ctrl),
+                        MouseEventKind::Up(_) => UserInput::NoOp,
                         Drag(Left) => UserInput::CodeDrag(x, y),
-                        MouseEventKind::Up(_) => UserInput::ClearDrag,
                         Moved => UserInput::ClearHover,
                         _ => debug(),
                     },

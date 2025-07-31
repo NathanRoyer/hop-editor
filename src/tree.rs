@@ -1,5 +1,6 @@
 use std::{io, fs, cmp};
 use std::fmt::Write;
+use crate::confirm;
 
 // syms: ▷▽▶▼;
 
@@ -67,8 +68,8 @@ impl FileTree {
         self.entries.push(trunk);
     }
 
-    fn get_path(&self, i: usize) -> Option<String> {
-        let mut entry = self.entries.get(i)?;
+    fn get_path(&self, i: usize) -> String {
+        let mut entry = &self.entries[i];
         let mut depth = entry.depth;
         let mut parts = Vec::new();
         let mut j = i;
@@ -84,63 +85,54 @@ impl FileTree {
             }
 
             j -= 1;
-            entry = self.entries.get(j)?;
+            entry = self.entries.get(j).expect("invalid structure");
         };
 
         parts.insert(0, entry.name_or_path.as_str());
-        Some(parts.join(""))
+        parts.join("")
     }
 
-    pub fn click(&mut self, index: u16) -> Option<String> {
-        let i = self.scroll + (index as isize);
-        let i = usize::try_from(i).ok()?;
-        let entry = self.entries.get(i)?;
-
-        if !entry.is_dir() {
-            return self.get_path(i);
-        }
-
-        let depth = entry.depth + 1;
+    pub fn toggle_dir(&mut self, i: usize, unfold_only: bool) {
+        let entry = &mut self.entries[i];
+        let inc_depth = entry.depth + 1;
         let suffix = self.entries.split_off(i + 1);
 
         let is_unfolded = match suffix.first() {
-            Some(e) => e.depth == depth,
+            Some(next) => next.depth == inc_depth,
             None => false,
         };
 
-        if is_unfolded {
-            let iter = suffix
-                .into_iter()
-                .skip_while(|e| e.depth >= depth);
-
-            self.entries.extend(iter);
+        if is_unfolded & unfold_only {
+            self.entries.extend(suffix);
+        } else if is_unfolded {
+            let iter = suffix.into_iter();
+            let crit = |e: &Entry| e.depth >= inc_depth;
+            self.entries.extend(iter.skip_while(crit));
         } else {
-            let dir_path = self.get_path(i)?;
+            let dir_path = self.get_path(i);
             let i = self.entries.len();
 
-            if read_dir(dir_path, &mut self.entries, depth).is_err() {
-                // todo: handle error
-                return None;
+            if let Err(error) = read_dir(dir_path, &mut self.entries, inc_depth) {
+                confirm!("failed to read directory: {error:?}");
+                self.entries.truncate(i);
             };
 
             self.entries[i..].sort();
             self.entries.extend(suffix);
         }
-
-        None
     }
 
-    pub fn line(&self, buf: &mut String, index: u16) {
-        let i = usize::try_from(self.scroll + (index as isize));
-        let len = self.entries.len();
+    pub fn click(&mut self, index: u16) -> Option<String> {
+        let i = self.scroll + (index as isize);
+        let i = usize::try_from(i).ok()?;
+        self.toggle_or_open(i)
+    }
+
+    pub fn line(&self, buf: &mut String, index: u16) -> Option<usize> {
         buf.clear();
-
-        if !i.is_ok_and(|i| i < len) {
-            return;
-        }
-
-        let i = i.unwrap();
-        let entry = &self.entries[i];
+        let y = self.scroll + (index as isize);
+        let i = usize::try_from(y).ok()?;
+        let entry = self.entries.get(i)?;
         let is_dir = entry.is_dir();
         let name = entry.name();
 
@@ -157,6 +149,8 @@ impl FileTree {
 
         let indent = entry.depth * 3;
         let _ = write!(buf, "{:1$}{sym} {name}", "", indent);
+
+        Some(i)
     }
 
     pub fn check_overscroll(&mut self, tree_height: u16) {
@@ -175,6 +169,74 @@ impl FileTree {
 
     pub fn scroll(&mut self, delta: isize) {
         self.scroll += delta;
+    }
+
+    pub fn reveal_path(&mut self, mut path: &str) -> Option<usize> {
+        let mut found_trunk = false;
+        let mut i = 0;
+
+        while i < self.entries.len() {
+            let entry = &self.entries[i];
+            let mut open_dir = false;
+
+            if let Some(next) = path.strip_prefix(&entry.name_or_path) {
+                found_trunk |= entry.is_trunk();
+
+                if found_trunk {
+                    path = next;
+                    open_dir = entry.is_dir();
+                }
+
+                if path.is_empty() {
+                    return Some(i);
+                }
+
+                if open_dir {
+                    self.toggle_dir(i, true);
+                }
+            }
+
+            i += 1;
+        }
+
+        None
+    }
+
+    pub fn toggle_or_open(&mut self, i: usize) -> Option<String> {
+        if self.entries.get(i)?.is_dir() {
+            self.toggle_dir(i, false);
+            None
+        } else {
+            Some(self.get_path(i))
+        }
+    }
+
+    pub fn enter_dir(&mut self, i: &mut usize) {
+        if !self.entries[*i].is_dir() {
+            return;
+        }
+
+        self.toggle_dir(*i, true);
+        *i += 1;
+    }
+
+    pub fn leave_dir(&mut self, i: &mut usize) {
+        let depth = self.entries[*i].depth;
+        let Some(target) = depth.checked_sub(1) else {
+            return;
+        };
+
+        while self.entries[*i].depth != target {
+            *i -= 1;
+        }
+    }
+
+    pub fn up_down(&mut self, i: &mut usize, delta: isize) {
+        if let Some(next) = i.checked_add_signed(delta) {
+            if next < self.entries.len() {
+                *i = next;
+            }
+        }
     }
 }
 
