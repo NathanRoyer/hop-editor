@@ -1,5 +1,10 @@
-# todo: improve this theme
+[general]
+# syntax-file = '/opt/syntax.toml'
+# background = '#111'
+tree-width = 30
+hover = '#444'
 
+[syntax]
 kw-strong = '#ff8888'
 kw-basic = '#ddaa66'
 kw-weak = '#cc8855'
@@ -23,7 +28,3 @@ numhex = '#aabb33'
 numdec = '#aabb33'
 numbin = '#aabb33'
 numoct = '#aabb33'
-
-hover-bg = '#444444'
-
-

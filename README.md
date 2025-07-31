@@ -116,3 +116,4 @@ By default, this path is `~/.config/hop.toml`.
 - select next occurence (C-d)
 - find (in tab or tree mode) (C-f)
 - find and replace
+- home / end

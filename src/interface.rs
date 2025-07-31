@@ -6,20 +6,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::fmt::{self, Write as _};
 use std::mem::take;
 
+use crate::config::{ansi_color, tree_width, default_bg_color, hover_color};
 use crate::colored_text::ColoredText;
-use crate::theme::Theme;
 use crate::tab::TabList;
 use crate::confirm;
 
-const TREE_WIDTH: u16 = 40;
 const TABS_HEIGHT: u16 = 3;
 const MENU_HEIGHT: u16 = 4;
 const LN_WIDTH: usize = 4;
-
-pub fn default_bg_color() -> Color {
-    // Color::from((0, 0, 0))
-    Color::Reset
-}
 
 static DIRTY: AtomicBool = AtomicBool::new(true);
 
@@ -135,11 +129,11 @@ impl Interface {
     }
 
     fn code_width(&self) -> usize {
-        self.width.saturating_sub(TREE_WIDTH + 1).into()
+        self.width.saturating_sub(tree_width() + 1).into()
     }
 
     fn erase_tab_list(&mut self, offset: u16) {
-        let x = TREE_WIDTH + 1 + offset;
+        let x = tree_width() + 1 + offset;
         let len = self.code_width().saturating_sub(offset.into());
 
         queue!(self.stdout, MoveTo(x, 0)).unwrap();
@@ -156,10 +150,10 @@ impl Interface {
         queue!(self.stdout, Clear(ClearType::All)).unwrap();
         queue!(self.stdout, SetForegroundColor(Color::Reset)).unwrap();
         queue!(self.stdout, MoveTo(0, MENU_HEIGHT)).unwrap();
-        let _ = write!(self.stdout, "{:─^1$}", " Folders ", TREE_WIDTH as _);
+        let _ = write!(self.stdout, "{:─^1$}", " Folders ", tree_width() as _);
 
         for y in 0..self.height {
-            queue!(self.stdout, MoveTo(TREE_WIDTH, y)).unwrap();
+            queue!(self.stdout, MoveTo(tree_width(), y)).unwrap();
 
             let c = match y {
                 0 | 2 => '├',
@@ -188,10 +182,9 @@ impl Interface {
         hovered: bool,
         index: u16,
         text: &str,
-        theme: &Theme,
     ) {
         if hovered {
-            let color = theme.get_ansi("hover-bg");
+            let color = hover_color();
             queue!(self.stdout, SetBackgroundColor(color)).unwrap();
         }
 
@@ -199,7 +192,7 @@ impl Interface {
             queue!(self.stdout, SetAttribute(Attribute::Reverse)).unwrap();
         }
 
-        let max = TREE_WIDTH.min(self.width) as usize;
+        let max = tree_width().min(self.width) as usize;
         let (cut, chars) = cut_len(text, max);
         let cut = cut.unwrap_or(text.len());
         self.write_text(0, MENU_HEIGHT + 1 + index, &text[..cut]);
@@ -222,7 +215,7 @@ impl Interface {
         let _ = write!(&mut buf, "{:1$} ", line_no, LN_WIDTH);
 
         let y = TABS_HEIGHT + index;
-        let mut x = TREE_WIDTH + 1;
+        let mut x = tree_width() + 1;
         self.write_text(x, y, &buf);
 
         x += LN_WIDTH as u16 + 2;
@@ -239,9 +232,8 @@ impl Interface {
         hover_pos: Option<u16>,
         focused: usize,
         items: &TabList,
-        theme: &Theme,
     ) {
-        let tabs = TREE_WIDTH + 1;
+        let tabs = tree_width() + 1;
         let mut cursor = 0;
 
         for (i, (modified, tab_name)) in items.iter().enumerate() {
@@ -257,13 +249,13 @@ impl Interface {
             }
 
             let bg_color = match hovered {
-                true => theme.get_ansi("hover-bg"),
+                true => hover_color(),
                 false => default_bg_color(),
             };
 
             let fg_color = match (i == focused, modified) {
-                (true, false) => theme.get_ansi("kw-strong"),
-                (true, true) => theme.get_ansi("kw-basic"),
+                (true, false) => ansi_color("kw-strong"),
+                (true, true) => ansi_color("kw-basic"),
                 _others => Color::Reset,
             };
 
@@ -320,12 +312,12 @@ impl Interface {
     }
 
     fn cursor_pos(&self, x: u16, y: u16) -> Location {
-        let code_x = TREE_WIDTH + (LN_WIDTH as u16) + 3;
+        let code_x = tree_width() + (LN_WIDTH as u16) + 3;
         let tree_y = MENU_HEIGHT + 1;
 
-        if x == TREE_WIDTH {
+        if x == tree_width() {
             Location::PanelSep
-        } else if x < TREE_WIDTH {
+        } else if x < tree_width() {
             if y < MENU_HEIGHT {
                 Location::Menu
             } else if y >= tree_y {
@@ -334,7 +326,7 @@ impl Interface {
                 Location::MenuEdge
             }
         } else if y < 3 {
-            Location::Tab(x - TREE_WIDTH - 1)
+            Location::Tab(x - tree_width() - 1)
         } else if x < code_x {
             Location::LineNo(y - 3)
         } else {

@@ -1,8 +1,7 @@
 use crossterm::style::*;
 use std::fmt;
 
-use crate::interface::default_bg_color;
-use crate::theme::Theme;
+use crate::config::{ansi_color, default_bg_color};
 
 pub type ModeName = &'static str;
 pub type PartLen = usize;
@@ -25,7 +24,6 @@ pub struct ColoredText<'a> {
     cursors: &'a [usize],
     tab_width_m1: usize,
     parts: &'a [Part],
-    theme: &'a Theme,
     max_chars: usize,
     text: &'a str,
 }
@@ -36,13 +34,11 @@ impl<'a> ColoredText<'a> {
         cursors: &'a [usize],
         parts: &'a [Part],
         selections: &'a [Selection],
-        theme: &'a Theme,
         text: &'a str,
     ) -> Self {
         Self {
             parts,
             selections,
-            theme,
             text,
             cursors,
             tab_width_m1,
@@ -79,7 +75,7 @@ impl fmt::Display for ColoredText<'_> {
             let text = &self.text[byte_offset..end];
             byte_offset = end;
 
-            let color = self.theme.get_ansi(mode_name);
+            let color = ansi_color(mode_name);
             write!(f, "{}", SetForegroundColor(color))?;
 
             for mut new_char in text.chars() {

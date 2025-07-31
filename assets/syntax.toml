@@ -59,16 +59,21 @@ call-syms = [']']
 [markdown]
 extension = "md"
 comment-prefix = []
-strings-normal = []
+
+strings-normal = [
+    { start = "**", stop = '**', escape = [] },
+    { start = "`", stop = '`', escape = [] },
+]
+
 strings-special = [
-    { start = "#", stop = '\\=+!!none', escape = [] },
+    { start = "#", stop = '!!!!!!none', escape = [] },
 ]
 
 multi-line-comments = [
     { start = '```', stop = '```', escape = [], multi-line = true },
 ]
 
-symbols = ['*', '_', '(', ')', '[', ']']
+symbols = ['*', '|', '_', '(', ')', '[', ']']
 
 number-glue = []
 numbers = []
@@ -76,6 +81,11 @@ keywords-strong = []
 keywords-basic = []
 keywords-weak = []
 call-syms = []
+
+remap.spe-str = 'imixed'
+remap.imixed = 'ilower'
+remap.iupper = 'ilower'
+remap.symbol = 'kw-strong'
 
 [json]
 extension = "json"

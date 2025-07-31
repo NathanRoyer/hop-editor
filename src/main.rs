@@ -3,18 +3,20 @@ use interface::{Interface, UserInput, restore_term};
 use tab::{TabMap, TabList};
 use syntax::SyntaxFile;
 use tree::FileTree;
-use theme::Theme;
 
 use std::{env, fs, panic, backtrace};
 
 mod colored_text;
 mod interface;
+mod config;
 mod syntax;
-mod theme;
 mod tree;
 mod tab;
 
 const CONFIRM_QUIT: &str = "[UNSAVED FILES]\nSome files have unsaved edits!\n- Press Enter to quit.\n- Press Escape to cancel.";
+
+const DEFAULT_CONFIG: &str = include_str!("../assets/config.toml");
+const DEFAULT_SYNTAX: &str = include_str!("../assets/syntax.toml");
 
 fn panic_handler(info: &panic::PanicHookInfo) {
     let bt = backtrace::Backtrace::capture();
@@ -38,14 +40,13 @@ pub struct Globals {
     syntaxes: SyntaxFile,
     interface: Interface,
     tree: FileTree,
-    theme: Theme,
     tabs: TabMap,
 }
 
 impl Globals {
     fn update_tab_list(&mut self) {
         let focused = self.tabs.update_tab_list(&mut self.list);
-        self.interface.set_tab_list(self.tab_hover, focused, &self.list, &self.theme);
+        self.interface.set_tab_list(self.tab_hover, focused, &self.list);
     }
 
     fn update_code(&mut self) {
@@ -75,7 +76,6 @@ impl Globals {
                 &self.cursor_buf,
                 &self.part_buf,
                 &self.sel_buf,
-                &self.theme,
                 data.text,
             );
 
@@ -89,7 +89,7 @@ impl Globals {
             let maybe_line = self.tree.line(&mut buf, i);
             let selected = self.tree_select == maybe_line;
             let hovered = self.tree_hover == Some(i);
-            self.interface.set_tree_row(selected, hovered, i, &buf, &self.theme);
+            self.interface.set_tree_row(selected, hovered, i, &buf);
         }
     }
 
@@ -238,9 +238,11 @@ impl Globals {
 }
 
 fn main() -> Result<(), &'static str> {
-    let theme_str = include_str!("../theme.toml");
-    let syntaxes_str = include_str!("../syntax.toml");
-    let syntaxes = SyntaxFile::parse(syntaxes_str).unwrap();
+    config::init();
+
+    let syntaxes = config::syntax_file();
+    let mut interface = Interface::new();
+    interface.draw_decorations();
 
     let mut globals = Globals {
         // state
@@ -253,9 +255,8 @@ fn main() -> Result<(), &'static str> {
         tab_hover: None,
 
         // singletons
-        interface: Interface::new(),
+        interface,
         tree: FileTree::new(),
-        theme: Theme::parse(theme_str)?,
         tabs: TabMap::new(),
         syntaxes,
     };

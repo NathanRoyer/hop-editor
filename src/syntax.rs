@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use litemap::LiteMap;
+use crate::confirm;
 use std::sync::Arc;
 use std::mem::take;
 use RangeMode::*;
@@ -48,6 +49,9 @@ pub struct SyntaxConfig {
     #[serde(default)]
     multi_line_comments: Vec<StringConfig>,
 
+    #[serde(default)]
+    remap: LiteMap<String, String>,
+
     comment_prefix: Vec<String>,
     keywords_strong: Vec<String>,
     keywords_basic: Vec<String>,
@@ -58,7 +62,7 @@ pub struct SyntaxConfig {
     symbols: Vec<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 pub struct SyntaxFile {
     #[serde(flatten)]
     pub inner: LiteMap<String, Arc<SyntaxConfig>>,
@@ -69,7 +73,7 @@ impl SyntaxFile {
         match toml::from_str(config_str) {
             Ok(config) => Ok(config),
             Err(error) => {
-                println!("toml_parse: {error:?}");
+                confirm!("failed to parse syntax file: {:?}", error.message());
                 Err("failed to parse syntax file")
             }
         }
@@ -153,6 +157,35 @@ impl RangeMode {
             Call(Casing::Upper) => "cupper",
         }
     }
+
+    pub fn from_str(string: &str) -> Self {
+        match string {
+            "imixed" => Identifier(Casing::Mixed),
+            "ilower" => Identifier(Casing::Lower),
+            "iupper" => Identifier(Casing::Upper),
+            "kw-strong" => KeywordStrong,
+            "kw-basic" => KeywordBasic,
+            "kw-weak" => KeywordWeak,
+            "spe-str" => StringSpecial,
+            "string" => StringNormal,
+            "format" => StringFormat,
+            "escape" => StringEscape,
+            "comment" => Comment,
+            "symbol" => Symbol,
+            "wspace" => Whitespace,
+            "numhex" => Number(NumberType::Hex),
+            "numdec" => Number(NumberType::Dec),
+            "numbin" => Number(NumberType::Bin),
+            "numoct" => Number(NumberType::Oct),
+            "cmixed" => Call(Casing::Mixed),
+            "clower" => Call(Casing::Lower),
+            "cupper" => Call(Casing::Upper),
+            other => {
+                confirm!("invalid token type: {other:?}");
+                Comment
+            },
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
@@ -219,6 +252,15 @@ impl SyntaxConfig {
         None
     }
 
+    fn remap(&self, ranges: &mut Vec<Range>) {
+        for range in ranges.iter_mut() {
+            let in_str = range.mode.as_str();
+            if let Some(out_str) = self.remap.get(in_str) {
+                range.mode = RangeMode::from_str(out_str);
+            }
+        }
+    }
+
     pub fn highlight(
         &self,
         start: Option<LineContext>,
@@ -238,6 +280,7 @@ impl SyntaxConfig {
             let Some(offset) = str_cfg.find_end(line) else {
                 // this line does not change the context
                 dst.push(Range::new(line.len(), mode));
+                self.remap(dst);
                 return start;
             };
 
@@ -262,6 +305,7 @@ impl SyntaxConfig {
                     check_push_ident(&mut ident_len, dst);
                     let mode = Comment;
                     dst.push(Range::new(line.len(), mode));
+                    self.remap(dst);
                     return None;
                 }
             }
@@ -287,6 +331,7 @@ impl SyntaxConfig {
 
                     let Some(offset) = str_cfg.find_end(payload) else {
                         dst.push(Range::new(line.len(), mode));
+                        self.remap(dst);
                         return Some(ctx_gen(i));
                     };
 
@@ -376,6 +421,7 @@ impl SyntaxConfig {
             line = &line[range.len..];
         }
 
+        self.remap(dst);
         None
     }
 }
