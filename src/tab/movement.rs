@@ -79,24 +79,29 @@ impl Tab {
         }
     }
 
-    pub fn horizontal_jump(&mut self, delta: isize, select: bool) {
+    fn hor_jump_cursor(&mut self, c: usize, delta: isize, select: bool) {
         type Sig = (usize, fn(&mut Tab, usize, bool));
-        self.unselect_if_not(select, Some(delta < 0));
 
         let (num_iter, callback): Sig = match delta < 0 {
             true => ((-delta) as usize, Self::backoff_cursor_once),
             false => (delta as usize, Self::advance_cursor_once),
         };
 
-        for c in 0..self.cursors.len() {
-            for _ in 0..num_iter {
-                let y = self.cursors[c].y;
-                self.lines[y].dirty = true;
-                callback(self, c, select);
-            }
-
+        for _ in 0..num_iter {
             let y = self.cursors[c].y;
             self.lines[y].dirty = true;
+            callback(self, c, select);
+        }
+
+        let y = self.cursors[c].y;
+        self.lines[y].dirty = true;
+    }
+
+    pub fn horizontal_jump(&mut self, delta: isize, select: bool) {
+        self.unselect_if_not(select, Some(delta < 0));
+
+        for c in 0..self.cursors.len() {
+            self.hor_jump_cursor(c, delta, select);
         }
 
         self.check_cursors();
@@ -211,9 +216,14 @@ impl Tab {
 
     pub fn auto_select(&mut self) {
         self.highlight();
-        let c = self.latest_cursor();
 
+        let c = self.latest_cursor();
         let cursor = &mut self.cursors[c];
+
+        if cursor.selects() {
+            return self.find_next_occurence(c);
+        }
+
         let line = &mut self.lines[cursor.y];
         let mut proc_chars = 0;
         let mut offset = 0;
@@ -236,5 +246,110 @@ impl Tab {
         }
 
         line.dirty = true;
+    }
+
+    fn matches(&self, text: &str, x: usize, mut y: usize) -> bool {
+        let line = &self.lines[y].buffer;
+        let mut line_iter = line.chars().skip(x);
+        let mut text_iter = text.chars();
+
+        loop {
+            let Some(text_char) = text_iter.next() else {
+                break true;
+            };
+
+            let line_char = line_iter.next();
+            let has_lf = line_char.is_none();
+            let expect_lf = text_char == '\n';
+
+            if expect_lf && has_lf {
+                y += 1;
+
+                line_iter = match self.lines.get(y) {
+                    Some(line) => line.buffer.chars().skip(0),
+                    None => break false,
+                };
+
+                continue;
+            }
+
+            if line_char != Some(text_char) {
+                break false;
+            }
+        }
+    }
+
+    fn find(&self, text: &str, mut start_x: usize, start_y: usize) -> Option<(usize, usize)> {
+        let lines = self.lines.len();
+
+        for y in start_y..lines {
+            let len = self.lines[y].len_chars();
+
+            for x in start_x..=len {
+                if self.matches(text, x, y) {
+                    return Some((x, y));
+                }
+            }
+
+            start_x = 0;
+        }
+
+        None
+    }
+
+    fn extract_selection(&mut self, c: usize) -> String {
+        let mut selection = String::new();
+        let mut a = self.cursors[c];
+        let mut b = a;
+
+        a.sel_jump(true);
+        b.sel_jump(false);
+
+        for y in a.y..=b.y {
+            let line = &self.lines[y];
+
+            let start_x = match y == a.y {
+                true => a.x,
+                false => 0,
+            };
+
+            let (limit_x, addition) = match y == b.y {
+                true => (b.x, ""),
+                false => (line.len_chars(), "\n"),
+            };
+
+            let limit_len = line.len_until(limit_x);
+            let start_len = line.len_until(start_x);
+
+            let line = &line.buffer[start_len..limit_len];
+            selection += line;
+            selection += addition;
+        }
+
+        selection
+    }
+
+    fn find_next_occurence(&mut self, c: usize) {
+        let text = self.extract_selection(c);
+        let mut cursor = self.cursors[c];
+        let chars = text.chars().count();
+        cursor.sel_jump(false);
+
+        if let Some((x, y)) = self.find(&text, cursor.x, cursor.y) {
+            let id = self.cursors.len();
+            cursor.sel_jump(true);
+
+            let new_cursor = Cursor {
+                x,
+                y,
+                sel_x: 0,
+                sel_y: 0,
+                id,
+            };
+
+            self.cursors.push(new_cursor);
+            self.hor_jump_cursor(id, chars as isize, true);
+            self.check_cursors();
+        }
     }
 }

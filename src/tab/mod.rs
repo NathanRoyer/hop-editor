@@ -165,6 +165,10 @@ impl Tab {
         self.modified
     }
 
+    pub fn has_selections(&self) -> bool {
+        self.cursors.iter().any(Cursor::selects)
+    }
+
     pub fn path(&self) -> Option<&str> {
         self.file_path.as_deref()
     }

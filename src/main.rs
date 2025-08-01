@@ -120,6 +120,9 @@ impl Globals {
                     self.tree_select = None;
                     update_tree = true;
                 },
+                (None, UserInput::Quit(false)) if tab.has_selections() => {
+                    tab.horizontal_jump(0, false);
+                },
                 (_, UserInput::Quit(_)) => match self.tabs.all_saved() {
                     true => break,
                     false if confirm!("{}", CONFIRM_QUIT) => break,

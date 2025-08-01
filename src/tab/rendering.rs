@@ -77,6 +77,7 @@ impl Tab {
 
             if cursor.touches(index) {
                 if let Some(orig_x) = cursor.x.checked_add_signed(cursor.sel_x) {
+                    // confirm!("orig_x: {orig_x}");
                     sel_buf.push(line.half_select(!forward_sel, orig_x));
                 }
             }
