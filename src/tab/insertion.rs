@@ -58,6 +58,7 @@ impl Tab {
     }
 
     pub fn insert_text(&mut self, text: &str) {
+        self.prepare_insertion();
         self.erase_selection();
 
         for c in 0..self.cursors.len() {

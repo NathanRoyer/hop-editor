@@ -10,13 +10,14 @@ mod rendering;
 mod insertion;
 mod deletion;
 mod movement;
+mod history;
 
 const CLOSE_WARNING: &str = "[UNSAVED FILE]\nThis file has unsaved edits!\n- Press Enter to discard the edits.\n- Press Escape to cancel.";
 
 pub type TabList = Vec<(bool, Arc<str>)>;
 
 #[derive(Clone, Debug, Default)]
-pub struct Line {
+struct Line {
     buffer: String,
     ranges: Vec<Range>,
     eol_ctx: Option<LineContext>,
@@ -29,6 +30,18 @@ pub struct DirtyLine<'a> {
     pub text: &'a str,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum Edition {
+    Insertion,
+    Deletion,
+}
+
+struct Snapshot {
+    cursors: Vec<Cursor>,
+    before: Edition,
+    buffer: String,
+}
+
 pub struct Tab {
     file_path: Option<String>,
     tmp_buf: String,
@@ -39,6 +52,8 @@ pub struct Tab {
     modified: bool,
     syntax: Option<Arc<SyntaxConfig>>,
     tab_width_m1: usize,
+    history: Vec<Snapshot>,
+    disable_history: bool,
 }
 
 pub struct TabMap {
@@ -145,10 +160,13 @@ impl Tab {
             cursors: vec![Cursor::new(0)],
             modified: false,
             tab_width_m1: 3,
+            history: Vec::new(),
+            disable_history: true,
             syntax,
         };
 
         this.insert_text(&text);
+        this.disable_history = false;
         this.modified = false;
         this.tmp_buf = text;
 

@@ -57,6 +57,8 @@ impl Tab {
 
     pub fn backspace_once(&mut self, forward: bool) {
         if !self.erase_selection() {
+            self.prepare_deletion();
+
             if forward {
                 self.horizontal_jump(1, false);
             }
@@ -70,18 +72,17 @@ impl Tab {
     }
 
     pub fn erase_selection(&mut self) -> bool {
-        let range = 0..self.cursors.len();
-        let mut it_happened = false;
+        if !self.has_selections() {
+            return false;
+        }
 
+        self.prepare_deletion();
+        let range = 0..self.cursors.len();
         for c in range.rev() {
             let cursor = &mut self.cursors[c];
-            if cursor.sel_x == 0 && cursor.sel_y == 0 {
-                continue;
-            }
 
             // ensures sel is earlier than cursor
             cursor.sel_jump(false);
-            it_happened = true;
 
             loop {
                 let cursor = &mut self.cursors[c];
@@ -104,11 +105,9 @@ impl Tab {
             self.backspace(c, -sel_x as usize);
         }
 
-        if it_happened {
-            // todo: do better
-            self.set_fully_dirty();
-        }
+        // todo: do better
+        self.set_fully_dirty();
 
-        it_happened
+        true
     }
 }
