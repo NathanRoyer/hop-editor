@@ -23,6 +23,7 @@ struct Config {
 struct General {
     background: Option<HexColor>,
     syntax_file: Option<String>,
+    hide_folders: Vec<String>,
     hover: HexColor,
     tree_width: u16,
 }
@@ -112,6 +113,10 @@ pub fn default_bg_color() -> Color {
 
 pub fn hover_color() -> Color {
     color(Some(&config().general.hover))
+}
+
+pub fn hide_folder(folder: &String) -> bool {
+    config().general.hide_folders.contains(folder)
 }
 
 pub fn ansi_color(name: &str) -> Color {

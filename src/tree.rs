@@ -1,3 +1,4 @@
+use crate::config::hide_folder;
 use std::{io, fs, cmp};
 use std::fmt::Write;
 use crate::confirm;
@@ -14,8 +15,6 @@ pub struct FileTree {
     entries: Vec<Entry>,
     scroll: isize,
 }
-
-const HIDE_LIST: &[&str] = &[".git", "target"];
 
 impl Entry {
     fn name(&self) -> &str {
@@ -252,7 +251,7 @@ fn read_dir(dir_path: String, entries: &mut Vec<Entry>, depth: usize) -> io::Res
             continue;
         };
 
-        let hidden = HIDE_LIST.contains(&name_or_path.as_str());
+        let hidden = hide_folder(&name_or_path);
 
         let (Ok(ft), false) = (item.file_type(), hidden) else {
             continue;
