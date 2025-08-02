@@ -352,4 +352,23 @@ impl Tab {
             self.check_cursors();
         }
     }
+
+    pub fn line_seek(&mut self, to_start: bool, select: bool) {
+        self.unselect_if_not(select, None);
+
+        for c in 0..self.cursors.len() {
+            let cursor = &self.cursors[c];
+            let line = &self.lines[cursor.y];
+
+            let target = match to_start {
+                true => 0,
+                false => line.len_chars() as isize,
+            };
+
+            let delta = target - (cursor.x as isize);
+            self.hor_jump_cursor(c, delta, select);
+        }
+
+        self.check_cursors();
+    }
 }

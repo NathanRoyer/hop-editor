@@ -228,6 +228,8 @@ impl Globals {
                 (None, UserInput::AutoSelect) => tab.auto_select(),
                 (None, UserInput::Undo) => tab.undo(),
                 (None, UserInput::Redo) => tab.redo(),
+                (None, UserInput::SeekLineStart(s)) => tab.line_seek(true, s),
+                (None, UserInput::SeekLineEnd(s)) => tab.line_seek(false, s),
                 _others => (),
             }
 

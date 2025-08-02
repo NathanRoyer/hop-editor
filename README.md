@@ -112,7 +112,5 @@ By default, this path is `~/.config/hop.toml`.
 ## To-Do List
 
 - copy / cut / paste
-- undo / redo (C-z, C-y)
 - find (in tab or tree mode) (C-f)
 - find and replace
-- home / end
