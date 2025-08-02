@@ -50,7 +50,7 @@ pub struct TabMap {
     current: usize,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 struct Cursor {
     // x is in char unit, not byte
     x: usize,

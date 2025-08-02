@@ -14,6 +14,7 @@ mod tree;
 mod tab;
 
 const CONFIRM_QUIT: &str = "[UNSAVED FILES]\nSome files have unsaved edits!\n- Press Enter to quit.\n- Press Escape to cancel.";
+const FIND_PROMPT: &str = "Please input the text to look for.\n- Press Enter to reveal results.\n- Press Escape to cancel.";
 
 const DEFAULT_CONFIG: &str = include_str!("../assets/config.toml");
 const DEFAULT_SYNTAX: &str = include_str!("../assets/syntax.toml");
@@ -228,6 +229,11 @@ impl Globals {
                 (None, UserInput::AutoSelect) => tab.auto_select(),
                 (None, UserInput::Undo) => tab.undo(),
                 (None, UserInput::Redo) => tab.redo(),
+                (None, UserInput::Find) => {
+                    if let Some(text) = prompt!("{}", FIND_PROMPT) {
+                        tab.find_all(&text);
+                    }
+                },
                 (None, UserInput::SeekLineStart(s)) => tab.line_seek(true, s),
                 (None, UserInput::SeekLineEnd(s)) => tab.line_seek(false, s),
                 _others => (),

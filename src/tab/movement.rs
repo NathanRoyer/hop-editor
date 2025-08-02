@@ -297,6 +297,25 @@ impl Tab {
         None
     }
 
+    pub fn find_all(&mut self, text: &str) /* -> Vec<Cursor> */ {
+        let num_chars = text.chars().count() as isize;
+        let mut cursor = Cursor::new(0);
+        self.cursors.clear();
+        let mut c = 0;
+
+        while let Some((x, y)) = self.find(text, cursor.x, cursor.y) {
+            cursor = Cursor::new(c);
+            cursor.x = x;
+            cursor.y = y;
+            self.cursors.push(cursor);
+            self.hor_jump_cursor(c, num_chars, true);
+            cursor = *self.cursors.last().unwrap();
+            c += 1;
+        }
+
+        self.check_cursors();
+    }
+
     fn extract_selection(&mut self, c: usize) -> String {
         let mut selection = String::new();
         let mut a = self.cursors[c];

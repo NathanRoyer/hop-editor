@@ -33,6 +33,7 @@ pub enum UserInput {
     ClearHover,
     TabClick(u16),
     Backspace(bool),
+    Find,
     Paste,
     Copy,
     Cut,
@@ -356,6 +357,7 @@ impl Interface {
                         KeyCode::Char('s') => UserInput::Save,
                         KeyCode::Char('z') => UserInput::Undo,
                         KeyCode::Char('y') => UserInput::Redo,
+                        KeyCode::Char('f') => UserInput::Find,
                         KeyCode::Down => UserInput::Scroll(1),
                         KeyCode::Up => UserInput::Scroll(-1),
                         _ => (confirm!("unk-ev: {e:?}"), UserInput::NoOp).1,
@@ -451,6 +453,38 @@ pub fn set_dirty() {
     DIRTY.store(true, Ordering::SeqCst);
 }
 
+pub fn restore_term() {
+    let mut stdout = stdout();
+    let _ = disable_raw_mode();
+    queue!(stdout, SetBackgroundColor(Color::Reset)).unwrap();
+    queue!(stdout, DisableMouseCapture).unwrap();
+    queue!(stdout, LeaveAlternateScreen).unwrap();
+    queue!(stdout, RestorePosition).unwrap();
+    queue!(stdout, Show).unwrap();
+    let _ = stdout.flush();
+}
+
+fn popup(text: String) -> u16 {
+    set_dirty();
+
+    let mut stdout = stdout();
+    queue!(stdout, Clear(ClearType::All)).unwrap();
+    queue!(stdout, MoveTo(8, 4)).unwrap();
+    write!(stdout, "{:╌^1$}", "", 40).unwrap();
+
+    let mut y = 5;
+
+    for line in text.split('\n') {
+        queue!(stdout, MoveTo(8, y)).unwrap();
+        write!(stdout, "{line}").unwrap();
+        y += 1;
+    }
+
+    let _ = stdout.flush();
+
+    y
+}
+
 #[macro_export]
 macro_rules! confirm {
     ($entry:expr $(, $arg:expr)* $(,)?) => {
@@ -459,20 +493,7 @@ macro_rules! confirm {
 }
 
 pub fn _confirm(text: String) -> bool {
-    set_dirty();
-
-    let mut stdout = stdout();
-    queue!(stdout, Clear(ClearType::All)).unwrap();
-    queue!(stdout, MoveTo(8, 4)).unwrap();
-    write!(stdout, "{:╌^1$}", "", 40).unwrap();
-
-    for (i, line) in text.split('\n').enumerate() {
-        let y = i as u16 + 5;
-        queue!(stdout, MoveTo(8, y)).unwrap();
-        write!(stdout, "{line}").unwrap();
-    }
-
-    let _ = stdout.flush();
+    popup(text);
 
     loop {
         match read().unwrap() {
@@ -486,13 +507,70 @@ pub fn _confirm(text: String) -> bool {
     }
 }
 
-pub fn restore_term() {
+#[macro_export]
+macro_rules! prompt {
+    ($entry:expr $(, $arg:expr)* $(,)?) => {
+        $crate::interface::_prompt(format!($entry, $($arg),*))
+    }
+}
+
+pub fn _prompt(text: String) -> Option<String> {
+    let y = popup(text) + 1;
+
+    let mut prefix = String::new();
+    let mut suffix = String::new();
     let mut stdout = stdout();
-    let _ = disable_raw_mode();
-    queue!(stdout, SetBackgroundColor(Color::Reset)).unwrap();
-    queue!(stdout, DisableMouseCapture).unwrap();
-    queue!(stdout, LeaveAlternateScreen).unwrap();
-    queue!(stdout, RestorePosition).unwrap();
-    queue!(stdout, Show).unwrap();
-    let _ = stdout.flush();
+
+    let validate = loop {
+        let rev1 = SetAttribute(Attribute::Reverse);
+        let rev2 = SetAttribute(Attribute::NoReverse);
+        let (mut c, mut rest) = (' ', "");
+
+        if let Some(first) = suffix.chars().next() {
+            c = first;
+            rest = &suffix[c.len_utf8()..];
+        }
+
+        queue!(stdout, MoveTo(8, y)).unwrap();
+        queue!(stdout, Clear(ClearType::UntilNewLine)).unwrap();
+        write!(stdout, "> {prefix}").unwrap();
+        write!(stdout, "{rev1}{c}{rev2}").unwrap();
+        write!(stdout, "{rest}").unwrap();
+
+        let _ = stdout.flush();
+
+        match read().unwrap() {
+            Event::Key(e) if !e.is_release() => match e.code {
+                KeyCode::Enter => break true,
+                KeyCode::Esc => break false,
+
+                KeyCode::Right if !suffix.is_empty() => {
+                    prefix.push(suffix.remove(0));
+                },
+                KeyCode::Left => {
+                    prefix.pop().map(|c| suffix.insert(0, c));
+                },
+                KeyCode::Backspace => _ = prefix.pop(),
+                KeyCode::Delete if !suffix.is_empty() => _ = suffix.remove(0),
+                KeyCode::Char(c) => prefix.push(c),
+                KeyCode::Home => {
+                    suffix.insert_str(0, &prefix);
+                    prefix.clear();
+                },
+                KeyCode::End => {
+                    prefix += &suffix;
+                    suffix.clear();
+                },
+                _other => (),
+            },
+            _other => (),
+        }
+    };
+
+    if validate {
+        prefix += &suffix;
+        Some(prefix)
+    } else {
+        None
+    }
 }

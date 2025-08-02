@@ -41,11 +41,11 @@ taking a lot of inspiration from Sublime Text.
 | User Input           | Action                               |
 |----------------------|--------------------------------------|
 | Ctrl + Z             | Undo                                 |
-| Ctrl + Y             | Redo                                 |
-| Ctrl + X             | Cut                                  |
-| Ctrl + C             | Copy                                 |
-| Ctrl + V             | Paste via utility                    |
-| Ctrl + Shift + V     | Paste via terminal                   |
+| Ctrl + Y             | Redo All                             |
+| Ctrl + X             | Cut                           [todo] |
+| Ctrl + C             | Copy                          [todo] |
+| Ctrl + V             | Paste via utility             [todo] |
+| Ctrl + Shift + V     | Paste via terminal            [todo] |
 
 ### Scrolling
 
@@ -76,7 +76,7 @@ taking a lot of inspiration from Sublime Text.
 | Enter or Space       | Open file / (un)fold directory       |
 | Left and Right       | Enter and Leave directories          |
 | Up and Down          | Navigate in tree                     |
-| Ctrl + F             | Find in tree                         |
+| Ctrl + F             | Find in tree                  [todo] |
 
 
 
@@ -112,5 +112,4 @@ By default, this path is `~/.config/hop.toml`.
 ## To-Do List
 
 - copy / cut / paste
-- find (in tab or tree mode) (C-f)
-- find and replace
+- list of cursors in bottom left
