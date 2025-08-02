@@ -6,6 +6,8 @@ use crate::syntax::{Range, SyntaxFile, SyntaxConfig, LineContext};
 use crate::colored_text::{Part as TextPart, Selection};
 use crate::confirm;
 
+use history::History;
+
 mod rendering;
 mod insertion;
 mod deletion;
@@ -30,18 +32,6 @@ pub struct DirtyLine<'a> {
     pub text: &'a str,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-enum Edition {
-    Insertion,
-    Deletion,
-}
-
-struct Snapshot {
-    cursors: Vec<Cursor>,
-    before: Edition,
-    buffer: String,
-}
-
 pub struct Tab {
     file_path: Option<String>,
     tmp_buf: String,
@@ -52,8 +42,7 @@ pub struct Tab {
     modified: bool,
     syntax: Option<Arc<SyntaxConfig>>,
     tab_width_m1: usize,
-    history: Vec<Snapshot>,
-    disable_history: bool,
+    history: History,
 }
 
 pub struct TabMap {
@@ -160,13 +149,12 @@ impl Tab {
             cursors: vec![Cursor::new(0)],
             modified: false,
             tab_width_m1: 3,
-            history: Vec::new(),
-            disable_history: true,
             syntax,
+            history: History::new(),
         };
 
         this.insert_text(&text);
-        this.disable_history = false;
+        this.history.activate();
         this.modified = false;
         this.tmp_buf = text;
 

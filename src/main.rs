@@ -227,6 +227,7 @@ impl Globals {
                 (_, UserInput::Resize(w, h)) => self.interface.resize(w, h),
                 (None, UserInput::AutoSelect) => tab.auto_select(),
                 (None, UserInput::Undo) => tab.undo(),
+                (None, UserInput::Redo) => tab.redo(),
                 _others => (),
             }
 
