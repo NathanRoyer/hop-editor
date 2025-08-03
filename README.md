@@ -15,6 +15,24 @@ taking a lot of inspiration from Sublime Text.
 - multi-cursor
 
 
+## Installation
+
+### Option A: Download the x86_64/linux pre-built binary
+
+Please go to the 'releases' section of this git repository.
+
+### Option B: Build from the rust package registry
+
+1. Install Rust: https://www.rust-lang.org/tools/install
+2. Run `cargo install hop-editor`
+
+### Option B: Build from sources
+
+1. Install Rust: https://www.rust-lang.org/tools/install
+2. Clone this repository
+2. From the newly created directory, run `cargo install --path .`
+
+
 ## How To Use
 
 See [how-to-use.md](assets/how-to-use.md) in the `assets` folder.
@@ -26,11 +44,11 @@ See [how-to-use.md](assets/how-to-use.md) in the `assets` folder.
 
 #### Copying with Ctrl + C
 
-- `hop` will try to copy into `wl-copy`, then into `xclip`, then into `pbcopy`.
+- `hop` will try to copy using `wl-copy`, then using `xclip`, then using `pbcopy`.
 
 #### Pasting with Ctrl + V
 
-- `hop` will try to paste from `wl-paste`, then from `xclip`, then from `pbpaste`.
+- `hop` will try to paste using `wl-paste`, then using `xclip`, then using `pbpaste`.
 
 
 > When Ctrl+Shift+V is pressed, your terminal should spontaneously

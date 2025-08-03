@@ -2,15 +2,17 @@
 name = 'hop-editor'
 version = '1.0.0'
 edition = '2021'
-keywords = []
 authors = [ 'Nathan ROYER <nathan.royer.pro@gmail.com>' ]
 repository = 'https://github.com/NathanRoyer/hop-editor'
 description = 'terminal code editor'
 categories = [ 'command-line-utilities' ]
+keywords = ['editor', 'terminal', 'syntax', 'nano']
 license = 'MIT'
 
 [profile.release]
 overflow-checks = true
+opt-level = "z"
+lto = true
 
 [[bin]]
 name = "hop"
