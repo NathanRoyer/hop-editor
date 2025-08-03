@@ -112,4 +112,3 @@ By default, this path is `~/.config/hop.toml`.
 ## To-Do List
 
 - copy / cut / paste
-- list of cursors in bottom left

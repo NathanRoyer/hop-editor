@@ -1,5 +1,6 @@
 use std::mem::{swap, take};
 use std::{io, fs, cmp};
+use std::fmt::Write;
 use std::sync::Arc;
 
 use crate::syntax::{Range, SyntaxFile, SyntaxConfig, LineContext};
@@ -212,6 +213,22 @@ impl Tab {
     pub fn check_cursors(&mut self) {
         self.cursors.sort();
         self.cursors.dedup();
+    }
+
+    pub fn cursor_count(&self) -> usize {
+        self.cursors.len()
+    }
+
+    pub fn cursor_desc(&mut self, c: usize, dst: &mut String) {
+        let sel_count: usize = self.extract_selection(c);
+        let cursor = &self.cursors[c];
+        let x = cursor.x + 1;
+        let y = cursor.y + 1;
+        let _ = write!(dst, " • Line {}, Column {}", y, x);
+
+        if sel_count != 0 {
+            let _ = write!(dst, " [{sel_count}]");
+        }
     }
 
     pub fn set_fully_dirty(&mut self) {

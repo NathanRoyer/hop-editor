@@ -204,9 +204,15 @@ impl Interface {
 
         queue!(self.stdout, SetBackgroundColor(default_bg_color())).unwrap();
         queue!(self.stdout, SetAttribute(Attribute::NoReverse)).unwrap();
-        write!(self.stdout, "{:1$}", "", max - chars).unwrap();
+        write!(self.stdout, "{:1$}│", "", max - chars).unwrap();
 
         let _ = self.stdout.flush();
+    }
+
+    pub fn write_cursor_header(&mut self, y: u16) {
+        queue!(self.stdout, SetForegroundColor(Color::Reset)).unwrap();
+        queue!(self.stdout, MoveTo(0, MENU_HEIGHT + y)).unwrap();
+        let _ = write!(self.stdout, "{:─^1$}┤", " Cursors ", tree_width() as _);
     }
 
     pub fn set_code_row(&mut self, index: u16, line_no: Option<usize>, mut text: ColoredText) {

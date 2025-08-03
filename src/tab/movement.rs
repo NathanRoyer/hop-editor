@@ -316,8 +316,8 @@ impl Tab {
         self.check_cursors();
     }
 
-    fn extract_selection(&mut self, c: usize) -> String {
-        let mut selection = String::new();
+    pub(super) fn extract_selection<T: AppendStr>(&mut self, c: usize) -> T {
+        let mut selection = T::default();
         let mut a = self.cursors[c];
         let mut b = a;
 
@@ -341,15 +341,15 @@ impl Tab {
             let start_len = line.len_until(start_x);
 
             let line = &line.buffer[start_len..limit_len];
-            selection += line;
-            selection += addition;
+            selection.append(line);
+            selection.append(addition);
         }
 
         selection
     }
 
     fn find_next_occurence(&mut self, c: usize) {
-        let text = self.extract_selection(c);
+        let text: String = self.extract_selection(c);
         let mut cursor = self.cursors[c];
         let chars = text.chars().count();
         cursor.sel_jump(false);
@@ -389,5 +389,21 @@ impl Tab {
         }
 
         self.check_cursors();
+    }
+}
+
+pub(super) trait AppendStr: Default {
+    fn append(&mut self, text: &str);
+}
+
+impl AppendStr for String {
+    fn append(&mut self, text: &str) {
+        *self += text;
+    }
+}
+
+impl AppendStr for usize {
+    fn append(&mut self, text: &str) {
+        *self += text.chars().count();
     }
 }

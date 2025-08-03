@@ -147,7 +147,7 @@ impl FileTree {
         };
 
         let indent = entry.depth * 3;
-        let _ = write!(buf, "{:1$}{sym} {name}", "", indent);
+        let _ = write!(buf, " {:1$}{sym} {name}", "", indent);
 
         Some(i)
     }
