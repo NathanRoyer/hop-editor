@@ -57,29 +57,33 @@ impl Tab {
         self.set_lines_dirty(old_y);
     }
 
+    pub(super) fn insert_text_cursor(&mut self, c: usize, text: &str) {
+        let mut iter = text.split('\n');
+        let mut eol_cr = false;
+
+        let part = iter.next().unwrap();
+        let part = strip_cr(part, &mut eol_cr);
+        self.insert_text_no_lf(c, part);
+
+        for part in iter {
+            self.line_feed(c, eol_cr);
+            let part = strip_cr(part, &mut eol_cr);
+            self.insert_text_no_lf(c, part);
+        }
+
+        if eol_cr {
+            // does the user want this?
+            // will someone paste something ending in just \r
+            self.insert_text_no_lf(c, "\r");
+        }
+    }
+
     pub fn insert_text(&mut self, text: &str) {
         self.prepare_insertion();
         self.erase_selection();
 
         for c in 0..self.cursors.len() {
-            let mut iter = text.split('\n');
-            let mut eol_cr = false;
-
-            let part = iter.next().unwrap();
-            let part = strip_cr(part, &mut eol_cr);
-            self.insert_text_no_lf(c, part);
-
-            for part in iter {
-                self.line_feed(c, eol_cr);
-                let part = strip_cr(part, &mut eol_cr);
-                self.insert_text_no_lf(c, part);
-            }
-
-            if eol_cr {
-                // does the user want this?
-                // will someone paste something ending in just \r
-                self.insert_text_no_lf(c, "\r");
-            }
+            self.insert_text_cursor(c, text);
         }
 
         self.modified = true;

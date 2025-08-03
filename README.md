@@ -9,90 +9,31 @@ taking a lot of inspiration from Sublime Text.
 - select folders to show in the left panel
 - explore these folders and open files for edition
 - edit multiple files simultaneously via tabs
-- syntax highlighting in edited files
+- cheap syntax highlighting
 - intuitive mouse support
+- clipboard support
 - multi-cursor
 
 
 ## How To Use
 
-### Quitting
-
-| User Input           | Action                               |
-|----------------------|--------------------------------------|
-| Escape               | Quit `hop` or filetree keyboard mode |
-| Ctrl + Q             | Quit `hop`                           |
-
-### Cursors
-
-| User Input           | Action                               |
-|----------------------|--------------------------------------|
-| Click                | Replace cursors with a new one       |
-| Drag                 | Replace cursors with a selection     |
-| Ctrl + Click         | Add a cursor                         |
-| Ctrl + Drag          | Add a selection                      |
-| Ctrl + D             | Auto-Select                          |
-| Arrows               | Move all cursors                     |
-| Ctrl + Right         | Move all cursors 10 characters ahead |
-| Ctrl + Left          | Move all cursors 10 characters back  |
-
-### Edition
-
-| User Input           | Action                               |
-|----------------------|--------------------------------------|
-| Ctrl + Z             | Undo                                 |
-| Ctrl + Y             | Redo All                             |
-| Ctrl + X             | Cut                           [todo] |
-| Ctrl + C             | Copy                          [todo] |
-| Ctrl + V             | Paste via utility             [todo] |
-| Ctrl + Shift + V     | Paste via terminal            [todo] |
-
-### Scrolling
-
-| User Input           | Action                               |
-|----------------------|--------------------------------------|
-| Ctrl + Down          | Scroll down one line                 |
-| Ctrl + Up            | Scroll up one line                   |
-| Page Down            | Scroll down one page                 |
-| Page Up              | Scroll up one page                   |
-| Mouse Wheel          | Scroll                               |
-
-### Tabs
-
-| User Input           | Action                               |
-|----------------------|--------------------------------------|
-| Ctrl + S             | Save                                 |
-| Ctrl + F             | Find in tab                          |
-| Shift + Page Down    | Switch to previous tab               |
-| Shift + Page Up      | Switch to next tab                   |
-| Ctrl + W             | Close Tab                            |
-
-### File Tree Mode
-
-| User Input           | Action                               |
-|----------------------|--------------------------------------|
-| Ctrl + O             | Switch to file tree keyboard mode    |
-| Escape or Click      | Return to normal keyboard mode       |
-| Enter or Space       | Open file / (un)fold directory       |
-| Left and Right       | Enter and Leave directories          |
-| Up and Down          | Navigate in tree                     |
-| Ctrl + F             | Find in tree                  [todo] |
-
+See [how-to-use.md](assets/how-to-use.md) in the `assets` folder.
 
 
 ## Using the Clipboard
 
+`hop` relies on external executables for clipboard management.
+
 #### Copying with Ctrl + C
 
 - `hop` will try to copy into `wl-copy`, then into `xclip`, then into `pbcopy`.
-- `hop` will also instruct your terminal to copy the selected text into a clipboard.
 
-#### Pasting
+#### Pasting with Ctrl + V
 
-- When Ctrl+V is pressed, `hop` will try to paste from `wl-paste`,
-    then from `xclip`, then from `pbpaste`.
+- `hop` will try to paste from `wl-paste`, then from `xclip`, then from `pbpaste`.
 
-- When Ctrl+Shift+V is pressed, your terminal should spontaneously
+
+> When Ctrl+Shift+V is pressed, your terminal should spontaneously
     input characters from a clipboard as if they were pressed;
     `hop` does nothing special in this process.
 
@@ -102,13 +43,14 @@ taking a lot of inspiration from Sublime Text.
 The path of the configuration file can be specified with the `-c` argument.
 By default, this path is `~/.config/hop.toml`.
 
+Please check out the default config file in `assets` from the git repo.
+There you will also find a default syntax file.
+
 ### TOML Contents
 
-- `background-color`: hexadecimal color code or "default" (default)
-- `tree-width`: decimal number of columns (default: 40)
-- `ascii-only`: `true` or `false` (default: `false`)
-
-
-## To-Do List
-
-- copy / cut / paste
+- `background`: hexadecimal color code for the background
+- `tree-width`: decimal number of columns for the file tree
+- `syntax-file`: path to a syntax file for syntax highligting
+- `hide-folders`: list of folders to hide in the file tree
+- `hover`: hexadecimal color code for hovering color (tree & tabs)
+- `syntax`: map of syntax token types to hexadecimal color codes

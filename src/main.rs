@@ -170,9 +170,15 @@ impl Globals {
                     update_list = no_mod;
                     update_left = FOR_CURSORS;
                 },
-                (None, UserInput::Paste) => break,
-                (None, UserInput::Copy) => break,
-                (None, UserInput::Cut) => break,
+                (None, UserInput::Paste) => {
+                    tab.paste();
+                    update_left = FOR_CURSORS;
+                },
+                (None, UserInput::Copy) => tab.copy(),
+                (None, UserInput::Cut) => {
+                    tab.cut();
+                    update_left = FOR_CURSORS;
+                },
                 (None, UserInput::Backspace(forward)) => {
                     tab.backspace_once(forward);
                     update_list = no_mod;
@@ -237,7 +243,8 @@ impl Globals {
                 },
                 (_, UserInput::Reveal) => {
                     let path = tab.path().unwrap_or("");
-                    self.tree_select = self.tree.reveal_path(path);
+                    let index = self.tree.reveal_path(path).unwrap_or(0);
+                    self.tree_select = Some(index);
                     update_left = true;
                 },
                 (None, UserInput::HorizontalJump(d, s)) => {

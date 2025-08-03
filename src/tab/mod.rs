@@ -10,6 +10,7 @@ use crate::confirm;
 use history::History;
 
 mod rendering;
+mod clipboard;
 mod insertion;
 mod deletion;
 mod movement;
@@ -220,7 +221,9 @@ impl Tab {
     }
 
     pub fn cursor_desc(&mut self, c: usize, dst: &mut String) {
-        let sel_count: usize = self.extract_selection(c);
+        let mut sel_count = 0usize;
+        self.extract_selection(c, &mut sel_count);
+
         let cursor = &self.cursors[c];
         let x = cursor.x + 1;
         let y = cursor.y + 1;
