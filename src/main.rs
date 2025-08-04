@@ -348,23 +348,25 @@ fn main() -> Result<(), &'static str> {
 
     for arg in args {
         let Ok(path) = fs::canonicalize(arg) else {
+            restore_term();
             return Err("invalid path");
         };
 
         let Some(path_str) = path.to_str().map(String::from) else {
+            restore_term();
             return Err("invalid path");
         };
 
         if path.is_dir() {
             globals.tree.add_folder(path_str);
         } else if let Err(err) = globals.tabs.open(&globals.syntaxes, path_str) {
+            restore_term();
             println!("{err:?}");
             return Err("failed to open some files");
         }
     }
 
     globals.run();
-
     globals.interface.close();
 
     Ok(())

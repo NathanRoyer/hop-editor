@@ -1,4 +1,5 @@
 use std::process::Command;
+use crate::config::internal_clipboard;
 use super::*;
 
 const TMP_PATH: &str = "/tmp/hop-clipboard.txt";
@@ -17,6 +18,11 @@ impl Tab {
             }
         }
 
+        if internal_clipboard() {
+            self.internal_clipboard = text;
+            return;
+        }
+
         if let Err(error) = fs::write(TMP_PATH, text) {
             confirm!("failed to write clipboard-file ({TMP_PATH}):\n{error:?}");
             return;
@@ -31,14 +37,19 @@ impl Tab {
     }
 
     pub fn paste(&mut self) {
-        try_exec(false);
-
-        let Ok(text) = fs::read_to_string(TMP_PATH) else {
-            confirm!("failed to read clipboard-file ({TMP_PATH})");
-            return;
-        };
-
+        let mut text = take(&mut self.internal_clipboard);
         let cursors = self.cursors.len();
+
+        if !internal_clipboard() {
+            try_exec(false);
+
+            let Ok(contents) = fs::read_to_string(TMP_PATH) else {
+                confirm!("failed to read clipboard-file ({TMP_PATH})");
+                return;
+            };
+
+            text = contents;
+        }
 
         if cursors > 1 {
             let regions = text.split(DELIMITER).count();
@@ -106,6 +117,8 @@ fn try_exec(copy: bool) {
 
     if !success {
         let ln1 = "failed to use wl-clipboard, xclip or macOS equivalents.";
-        confirm!("{ln1}\nplease make sure at least one of these works.");
+        let ln2 = "please make sure at least one of these works.";
+        let ln3 = "alternatively, set `internal-clipboard` to `true` in config.";
+        confirm!("{ln1}\n{ln2}\n{ln3}");
     }
 }

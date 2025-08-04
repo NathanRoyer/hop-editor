@@ -41,6 +41,7 @@ See [how-to-use.md](assets/how-to-use.md) in the `assets` folder.
 ## Using the Clipboard
 
 `hop` relies on external executables for clipboard management.
+If this is a problem for you, try setting `internal-clipboard` to `true` in your config.
 
 #### Copying with Ctrl + C
 
@@ -66,9 +67,10 @@ There you will also find a default syntax file.
 
 ### TOML Contents
 
-- `background`: hexadecimal color code for the background
-- `tree-width`: decimal number of columns for the file tree
-- `syntax-file`: path to a syntax file for syntax highligting
+- `internal-clipboard`: set to `true` if you don't want to use the system-wide clipboard
 - `hide-folders`: list of folders to hide in the file tree
-- `hover`: hexadecimal color code for hovering color (tree & tabs)
+- `syntax-file`: path to a syntax file for syntax highligting
+- `tree-width`: decimal number of columns for the file tree
+- `background`: hexadecimal color code for the background
 - `syntax`: map of syntax token types to hexadecimal color codes
+- `hover`: hexadecimal color code for hovering color (tree & tabs)

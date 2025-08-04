@@ -37,6 +37,7 @@ pub struct DirtyLine<'a> {
 pub struct Tab {
     file_path: Option<String>,
     tmp_buf: String,
+    internal_clipboard: String,
     name: Arc<str>,
     lines: Vec<Line>,
     scroll: isize,
@@ -148,6 +149,7 @@ impl Tab {
             name,
             lines: vec![line],
             scroll: 0,
+            internal_clipboard: String::new(),
             cursors: vec![Cursor::new(0)],
             modified: false,
             tab_width_m1: 3,

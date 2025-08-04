@@ -1,6 +1,8 @@
 [general]
 # syntax-file = '/opt/syntax.toml'
 # background = '#111'
+
+internal-clipboard = true
 hide-folders = ['.git', 'target']
 tree-width = 30
 hover = '#444'
