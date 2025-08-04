@@ -1,0 +1,44 @@
+name: Rust
+
+on:
+  push:
+    tags: [ "*" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    permissions: write-all
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Add Musl Target
+      run: rustup target add x86_64-unknown-linux-musl
+
+    - name: Build
+      run: cargo build -r --target=x86_64-unknown-linux-musl
+
+    - name: release
+      uses: actions/create-release@v1
+      id: create_release
+      with:
+        draft: true
+        prerelease: false
+        release_name: "Version ${{ github.ref }}"
+        tag_name: ${{ github.ref }}
+        body: "Latest release of the `hop` editor"
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+
+    - name: upload linux artifact
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./target/x86_64-unknown-linux-musl/release/hop
+        asset_name: hop.x86_64-unknown-linux-musl.elf
+        asset_content_type: application/x-pie-executable
