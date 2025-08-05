@@ -349,7 +349,8 @@ impl Interface {
         let code_height = self.code_height() as isize;
 
         match read().unwrap() {
-            Event::Key(e) if !e.is_release() => {
+            Event::Key(e) if e.is_release() => UserInput::NoOp,
+            Event::Key(e) => {
                 let shift = e.modifiers.contains(KeyModifiers::SHIFT);
 
                 if e.modifiers.contains(KeyModifiers::CONTROL) {
@@ -404,49 +405,49 @@ impl Interface {
 
                 match pos {
                     Location::Code(x, y) => match e.kind {
-                        MouseEventKind::ScrollDown => UserInput::Scroll(1),
-                        MouseEventKind::ScrollUp => UserInput::Scroll(-1),
+                        ScrollDown => UserInput::Scroll(1),
+                        ScrollUp => UserInput::Scroll(-1),
                         Down(Left) => UserInput::CodeSeek(x, y, ctrl),
-                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        Up(_) => UserInput::NoOp,
                         Drag(Left) => UserInput::CodeDrag(x, y),
                         Moved => UserInput::ClearHover,
                         _ => debug(),
                     },
                     Location::TreeRow(y) => match e.kind {
-                        MouseEventKind::ScrollDown => UserInput::Scroll(1),
-                        MouseEventKind::ScrollUp => UserInput::Scroll(-1),
-                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        ScrollDown => UserInput::Scroll(1),
+                        ScrollUp => UserInput::Scroll(-1),
+                        Up(_) => UserInput::NoOp,
                         Down(Left) => UserInput::TreeClick(y),
                         Moved => UserInput::TreeHover(y),
                         Drag(Left) => UserInput::NoOp,
                         _ => debug(),
                     },
                     Location::Tab(x) => match e.kind {
-                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        Up(_) => UserInput::NoOp,
                         Down(Left) => UserInput::TabClick(x),
                         Moved => UserInput::TabHover(x),
                         Drag(Left) => UserInput::NoOp,
                         _ => debug(),
                     },
                     Location::LineNo(_y) => match e.kind {
-                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
                         Drag(Left) => UserInput::NoOp,
                         _ => debug(),
                     },
                     Location::PanelSep => match e.kind {
-                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
                         Drag(Left) => UserInput::NoOp,
                         _ => debug(),
                     },
                     Location::MenuEdge => match e.kind {
-                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
                         _ => debug(),
                     },
                     Location::Menu => match e.kind {
-                        MouseEventKind::Up(_) => UserInput::NoOp,
+                        Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
                         _ => debug(),
                     },

@@ -6,9 +6,9 @@ taking a lot of inspiration from Sublime Text.
 
 ## Features
 
-- select folders to show in the left panel
+- pin folders to a file tree
 - explore these folders and open files for edition
-- edit multiple files simultaneously via tabs
+- edit multiple files via tabs
 - cheap syntax highlighting
 - intuitive mouse support
 - clipboard support

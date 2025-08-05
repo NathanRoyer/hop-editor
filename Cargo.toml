@@ -26,3 +26,6 @@ hex_color = { version = '3.0', features = ['serde'] }
 litemap = { version = '0.8', features = ['serde'] }
 
 # vt100
+
+[features]
+windows = ['crossterm/windows']
