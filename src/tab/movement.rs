@@ -5,17 +5,11 @@ impl Tab {
         self.unselect_if_not(select, None);
 
         for c in 0..self.cursors.len() {
-            let char_w = |c| match c {
-                '\t' => self.tab_width_m1 + 1,
-                _ => 1,
-            };
-
             // to-do: check if we're not going back and
             // forth for nothing with cursor indices
             let cursor = &mut self.cursors[c];
             let line = &self.lines[cursor.y];
-            let i = line.len_until(cursor.x);
-            let x = line.buffer[..i].chars().map(char_w).sum();
+            let x = line.cells_until(cursor.x, self.tab_width_m1);
             let cx_backup = cursor.x as isize;
 
             let y = cursor.y as isize + delta;
@@ -135,9 +129,14 @@ impl Tab {
             return;
         };
 
-        let x = x as usize;
+        let mut x = x as usize;
         let c = self.latest_cursor();
         let cursor = &self.cursors[c];
+
+        if cursor.y == y {
+            x += self.h_scroll.saturating_sub(1);
+        }
+
         let same_xy = (cursor.x == x) & (cursor.y == y);
 
         if same_xy && !cursor.selects() {
@@ -171,8 +170,13 @@ impl Tab {
             return;
         };
 
+        let mut x = x as usize;
         let c = self.latest_cursor();
         let cursor = &mut self.cursors[c];
+
+        if cursor.y == y {
+            x += self.h_scroll.saturating_sub(1);
+        }
 
         cursor.swap_sel_direction();
         let backup = *cursor;
@@ -297,7 +301,7 @@ impl Tab {
         None
     }
 
-    pub fn find_all(&mut self, text: &str) /* -> Vec<Cursor> */ {
+    pub fn find_all(&mut self, text: &str) {
         let num_chars = text.chars().count() as isize;
         let mut cursor = Cursor::new(0);
         self.cursors.clear();
@@ -314,6 +318,7 @@ impl Tab {
         }
 
         self.check_cursors();
+        self.h_scroll = 0;
     }
 
     pub(super) fn extract_selection<T: AppendStr>(&mut self, c: usize, dst: &mut T) {

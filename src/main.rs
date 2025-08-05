@@ -76,11 +76,12 @@ impl Globals {
                 line_no = Some(index + 1);
                 tab.line_data(index, &mut self.part_buf, &mut self.sel_buf, &mut self.cursor_buf)
             } else {
-                tab::DirtyLine { tab_width_m1: 0, text: "" }
+                tab::DirtyLine { horizontal_scroll: 0, tab_width_m1: 0, text: "" }
             };
 
             // cursors are sorted
             let text = ColoredText::new(
+                data.horizontal_scroll,
                 data.tab_width_m1,
                 &self.cursor_buf,
                 &self.part_buf,
@@ -99,9 +100,10 @@ impl Globals {
         let num_cursors = tab.cursor_count() as u16;
         let cursor_lines = num_cursors.min(MAX_CURSORS);
         let tree_lines = height.saturating_sub(cursor_lines + 1);
-        self.tree.check_overscroll(tree_lines);
+        self.tree.check_overscroll();
 
         for i in 0..tree_lines {
+            self.str_buf.clear();
             let maybe_line = self.tree.line(&mut self.str_buf, i);
             let selected = self.tree_select == maybe_line;
             let hovered = self.tree_hover == Some(i);
@@ -131,9 +133,11 @@ impl Globals {
         panic::set_hook(Box::new(panic_handler));
 
         loop {
-            let max_y = self.interface.code_height();
+            let code_h = self.interface.code_height() as usize;
+            let code_w = self.interface.code_width();
+
             let tab = self.tabs.current();
-            tab.check_overscroll(max_y);
+            tab.check_overscroll();
 
             if self.interface.must_refresh() {
                 self.interface.draw_decorations();
@@ -167,20 +171,24 @@ impl Globals {
                 },
                 (None, UserInput::Insert(c)) => {
                     tab.insert_char(c);
+                    tab.ensure_cursor_visible(code_w, code_h);
                     update_list = no_mod;
                     update_left = FOR_CURSORS;
                 },
                 (None, UserInput::Paste) => {
                     tab.paste();
+                    tab.ensure_cursor_visible(code_w, code_h);
                     update_left = FOR_CURSORS;
                 },
                 (None, UserInput::Copy) => tab.copy(),
                 (None, UserInput::Cut) => {
                     tab.cut();
+                    tab.ensure_cursor_visible(code_w, code_h);
                     update_left = FOR_CURSORS;
                 },
                 (None, UserInput::Backspace(forward)) => {
                     tab.backspace_once(forward);
+                    tab.ensure_cursor_visible(code_w, code_h);
                     update_list = no_mod;
                     update_left = FOR_CURSORS;
                 },
@@ -193,9 +201,11 @@ impl Globals {
                     // update_left = self.tree_select.take().is_some();
                     update_left = FOR_CURSORS;
                     tab.seek(x, y, push_c);
+                    tab.ensure_cursor_visible(code_w, code_h);
                 },
                 (None, UserInput::CodeDrag(x, y)) => {
                     tab.drag_to(x, y);
+                    tab.ensure_cursor_visible(code_w, code_h);
                     update_left = FOR_CURSORS;
                 },
                 (_, UserInput::TabClick(x)) => {
@@ -249,10 +259,12 @@ impl Globals {
                 },
                 (None, UserInput::HorizontalJump(d, s)) => {
                     tab.horizontal_jump(d, s);
+                    tab.ensure_cursor_visible(code_w, code_h);
                     update_left = FOR_CURSORS;
                 },
                 (None, UserInput::VerticalJump(d, s)) => {
                     tab.vertical_jump(d, s);
+                    tab.ensure_cursor_visible(code_w, code_h);
                     update_left = FOR_CURSORS;
                 },
                 (Some(i), UserInput::HorizontalJump(-1, false)) => {
@@ -280,14 +292,17 @@ impl Globals {
                 (_, UserInput::Resize(w, h)) => self.interface.resize(w, h),
                 (None, UserInput::AutoSelect) => {
                     tab.auto_select();
+                    tab.ensure_cursor_visible(code_w, code_h);
                     update_left = FOR_CURSORS;
                 },
                 (None, UserInput::Undo) => {
                     tab.undo();
+                    tab.ensure_cursor_visible(code_w, code_h);
                     update_left = FOR_CURSORS;
                 },
                 (None, UserInput::Redo) => {
                     tab.redo();
+                    tab.ensure_cursor_visible(code_w, code_h);
                     update_left = FOR_CURSORS;
                 },
                 (None, UserInput::Find) => {
@@ -298,10 +313,12 @@ impl Globals {
                 },
                 (None, UserInput::SeekLineStart(s)) => {
                     tab.line_seek(true, s);
+                    tab.ensure_cursor_visible(code_w, code_h);
                     update_left = FOR_CURSORS;
                 },
                 (None, UserInput::SeekLineEnd(s)) => {
                     tab.line_seek(false, s);
+                    tab.ensure_cursor_visible(code_w, code_h);
                     update_left = FOR_CURSORS;
                 },
                 _others => (),

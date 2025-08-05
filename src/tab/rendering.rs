@@ -30,6 +30,8 @@ impl Tab {
         sel_buf: &mut Vec<Selection>,
         cursors: &mut Vec<usize>,
     ) -> DirtyLine<'a> {
+        let latest = self.latest_cursor();
+        let mut horizontal_scroll = 0;
         let tab_width_m1 = self.tab_width_m1;
         let line = &mut self.lines[index];
         let text = &line.buffer;
@@ -49,18 +51,22 @@ impl Tab {
             part_buf.push(("wspace", missing));
         }
 
-        for cursor in &self.cursors {
+        for (c, cursor) in self.cursors.iter().enumerate() {
             let forward_sel = cursor.sel_y < 0;
 
             if cursor.covers(index) {
                 sel_buf.clear();
                 let len = line.len_chars();
                 sel_buf.push(Selection::new(0, len));
-                return DirtyLine { tab_width_m1, text };
+                return DirtyLine { horizontal_scroll, tab_width_m1, text };
             }
 
             if cursor.y == index {
                 cursors.push(cursor.x);
+
+                if c == latest {
+                    horizontal_scroll = self.h_scroll;
+                }
 
                 if cursor.sel_y != 0 {
                     sel_buf.push(line.half_select(forward_sel, cursor.x));
@@ -83,25 +89,50 @@ impl Tab {
             }
         }
 
-        DirtyLine { tab_width_m1, text }
+        DirtyLine { horizontal_scroll, tab_width_m1, text }
     }
 
-    pub fn check_overscroll(&mut self, code_height: u16) {
-        let max = self.lines.len().saturating_sub(1) as isize;
+    pub fn check_overscroll(&mut self) {
+        let max = self.lines.len().saturating_sub(1);
 
-        if self.scroll > max {
-            self.scroll = max;
-        }
-
-        let max = code_height.saturating_sub(1) as isize;
-
-        if self.scroll < -max {
-            self.scroll = -max;
+        if self.v_scroll > max {
+            self.v_scroll = max;
         }
     }
 
     pub fn scroll(&mut self, delta: isize) {
-        self.scroll += delta;
-        self.set_lines_dirty(0);
+        self.v_scroll = self.v_scroll.checked_add_signed(delta).unwrap_or(0);
+        self.set_fully_dirty();
+    }
+
+    pub fn ensure_cursor_visible(&mut self, width: usize, height: usize) {
+        let c = self.latest_cursor();
+        let cursor = &self.cursors[c];
+
+        let max_x = match self.h_scroll {
+            0 => width.saturating_sub(1),
+            n => width.saturating_sub(2) + n,
+        };
+
+        let max_y = self.v_scroll + height;
+
+        let invisible_x = cursor.x < self.h_scroll || max_x <= cursor.x;
+        let invisible_y = cursor.y < self.v_scroll || max_y <= cursor.y;
+
+        if invisible_x {
+            // only applies to latest cursor
+            let line = &self.lines[cursor.y];
+            let x = line.cells_until(cursor.x, self.tab_width_m1);
+            self.h_scroll = x.saturating_sub(width / 2);
+        }
+
+        if invisible_y {
+            self.v_scroll = cursor.y.saturating_sub(height / 2);
+        }
+
+        if invisible_x | invisible_y {
+            // maybe todo do better for _x
+            self.set_fully_dirty();
+        }
     }
 }

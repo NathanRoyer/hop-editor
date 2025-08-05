@@ -125,21 +125,25 @@ impl Interface {
         restore_term();
     }
 
-    pub fn code_height(&self) -> u16 {
-        self.height.saturating_sub(TABS_HEIGHT)
-    }
-
     pub fn tree_height(&self) -> u16 {
         self.height.saturating_sub(MENU_HEIGHT + 1)
     }
 
-    fn code_width(&self) -> usize {
+    pub fn code_height(&self) -> u16 {
+        self.height.saturating_sub(TABS_HEIGHT)
+    }
+
+    fn tabs_width(&self) -> usize {
         self.width.saturating_sub(tree_width() + 1).into()
+    }
+
+    pub fn code_width(&self) -> usize {
+        self.tabs_width().saturating_sub(LN_WIDTH + 2)
     }
 
     fn erase_tab_list(&mut self, offset: u16) {
         let x = tree_width() + 1 + offset;
-        let len = self.code_width().saturating_sub(offset.into());
+        let len = self.tabs_width().saturating_sub(offset.into());
 
         queue!(self.stdout, MoveTo(x, 0)).unwrap();
         let _ = write!(self.stdout, "{:╌^1$}", "", len);

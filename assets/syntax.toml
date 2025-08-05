@@ -30,7 +30,7 @@ symbols = [
 
 number-glue = ['_', '.']
 numbers = ['dec', 'hex', 'oct', 'bin']
-keywords-strong = ['use', 'mod', 'const', 'mut', 'ref', 'true', 'false', 'break', 'continue', 'return']
+keywords-strong = ['pub', 'use', 'mod', 'const', 'mut', 'ref', 'true', 'false', 'break', 'continue', 'return']
 keywords-basic = ['type', 'impl', 'struct', 'enum']
 keywords-weak = ['self', 'let', 'static', 'for', 'while', 'if', 'match', 'fn']
 call-syms = ['(', '!', '<']

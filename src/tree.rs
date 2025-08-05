@@ -13,7 +13,7 @@ struct Entry {
 
 pub struct FileTree {
     entries: Vec<Entry>,
-    scroll: isize,
+    scroll: usize,
 }
 
 impl Entry {
@@ -122,15 +122,11 @@ impl FileTree {
     }
 
     pub fn click(&mut self, index: u16) -> Option<String> {
-        let i = self.scroll + (index as isize);
-        let i = usize::try_from(i).ok()?;
-        self.toggle_or_open(i)
+        self.toggle_or_open(index as usize + self.scroll)
     }
 
     pub fn line(&self, buf: &mut String, index: u16) -> Option<usize> {
-        buf.clear();
-        let y = self.scroll + (index as isize);
-        let i = usize::try_from(y).ok()?;
+        let i = index as usize + self.scroll;
         let entry = self.entries.get(i)?;
         let is_dir = entry.is_dir();
         let name = entry.name();
@@ -152,22 +148,16 @@ impl FileTree {
         Some(i)
     }
 
-    pub fn check_overscroll(&mut self, tree_height: u16) {
-        let max = self.entries.len().saturating_sub(1) as isize;
+    pub fn check_overscroll(&mut self) {
+        let max = self.entries.len().saturating_sub(1);
 
         if self.scroll > max {
             self.scroll = max;
         }
-
-        let max = tree_height.saturating_sub(1) as isize;
-
-        if self.scroll < -max {
-            self.scroll = -max;
-        }
     }
 
     pub fn scroll(&mut self, delta: isize) {
-        self.scroll += delta;
+        self.scroll = self.scroll.checked_add_signed(delta).unwrap_or(0);
     }
 
     pub fn reveal_path(&mut self, mut path: &str) -> Option<usize> {

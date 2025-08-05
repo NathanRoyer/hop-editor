@@ -21,6 +21,7 @@ impl Selection {
 
 pub struct ColoredText<'a> {
     selections: &'a [Selection],
+    horizontal_scroll: usize,
     cursors: &'a [usize],
     tab_width_m1: usize,
     parts: &'a [Part],
@@ -30,6 +31,7 @@ pub struct ColoredText<'a> {
 
 impl<'a> ColoredText<'a> {
     pub fn new(
+        horizontal_scroll: usize,
         tab_width_m1: usize,
         cursors: &'a [usize],
         parts: &'a [Part],
@@ -42,6 +44,7 @@ impl<'a> ColoredText<'a> {
             text,
             cursors,
             tab_width_m1,
+            horizontal_scroll,
             max_chars: 0,
         }
     }
@@ -60,6 +63,8 @@ fn write_cursor(f: &mut fmt::Formatter, c: char) -> Result<(), fmt::Error> {
 impl fmt::Display for ColoredText<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let selected = Color::from((80, 80, 80));
+
+        let mut skip_chars = self.horizontal_scroll;
         let mut iter_cursor = self.cursors.iter();
         let mut iter_sel = self.selections.iter();
         let mut cursor = iter_cursor.next();
@@ -70,6 +75,11 @@ impl fmt::Display for ColoredText<'_> {
         let mut byte_offset = 0;
         let mut sel_end = None;
 
+        if skip_chars > 0 {
+            write!(f, "{}…", SetForegroundColor(Color::Reset))?;
+            printed_chars = 1;
+        }
+
         for (mode_name, byte_len) in self.parts {
             let end = byte_offset + byte_len;
             let text = &self.text[byte_offset..end];
@@ -79,10 +89,9 @@ impl fmt::Display for ColoredText<'_> {
             write!(f, "{}", SetForegroundColor(color))?;
 
             for mut new_char in text.chars() {
-                let was_tab = new_char == '\t';
                 let mut added_chars = 1;
 
-                if was_tab {
+                if new_char == '\t' {
                     added_chars += self.tab_width_m1;
                     new_char = ' ';
                 }
@@ -106,15 +115,24 @@ impl fmt::Display for ColoredText<'_> {
                     }
                 }
 
-                if Some(processed_chars) == cursor.copied() {
-                    cursor = iter_cursor.next();
-                    write_cursor(f, new_char)?;
-                } else {
-                    write!(f, "{new_char}")?;
-                }
+                if skip_chars < added_chars {
+                    added_chars = added_chars - skip_chars;
+                    skip_chars = 0;
 
-                if was_tab {
-                    let _ = write!(f, "{:^1$}", "", self.tab_width_m1);
+                    if Some(processed_chars) == cursor.copied() {
+                        cursor = iter_cursor.next();
+                        write_cursor(f, new_char)?;
+                    } else {
+                        write!(f, "{new_char}")?;
+                    }
+
+                    if added_chars > 1 {
+                        let missing = added_chars - 1;
+                        let _ = write!(f, "{:^1$}", "", missing);
+                    }
+                } else {
+                    skip_chars -= added_chars;
+                    added_chars = 0;
                 }
 
                 printed_chars += added_chars;

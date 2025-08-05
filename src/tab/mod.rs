@@ -30,6 +30,7 @@ struct Line {
 }
 
 pub struct DirtyLine<'a> {
+    pub horizontal_scroll: usize,
     pub tab_width_m1: usize,
     pub text: &'a str,
 }
@@ -40,7 +41,8 @@ pub struct Tab {
     internal_clipboard: String,
     name: Arc<str>,
     lines: Vec<Line>,
-    scroll: isize,
+    v_scroll: usize,
+    h_scroll: usize,
     cursors: Vec<Cursor>,
     modified: bool,
     syntax: Option<Arc<SyntaxConfig>>,
@@ -131,6 +133,16 @@ impl Line {
             false => Selection::new(x_char, self.len_chars() - x_char),
         }
     }
+
+    fn cells_until(&self, char_x: usize, tab_width_m1: usize) -> usize {
+        let char_width = |c| match c {
+            '\t' => tab_width_m1 + 1,
+            _ => 1,
+        };
+
+        let i = self.len_until(char_x);
+        self.buffer[..i].chars().map(char_width).sum()
+    }
 }
 
 impl Tab {
@@ -148,7 +160,8 @@ impl Tab {
             tmp_buf: String::new(),
             name,
             lines: vec![line],
-            scroll: 0,
+            v_scroll: 0,
+            h_scroll: 0,
             internal_clipboard: String::new(),
             cursors: vec![Cursor::new(0)],
             modified: false,
@@ -184,9 +197,8 @@ impl Tab {
     }
 
     fn line_index(&self, screen_y: u16) -> Option<usize> {
-        let max_y = self.lines.len() as isize;
-        let y = screen_y as isize + self.scroll;
-        ((y >= 0) & (y < max_y)).then_some(y as usize)
+        let y = screen_y as usize + self.v_scroll;
+        (y < self.lines.len()).then_some(y)
     }
 
     fn set_lines_dirty(&mut self, from_line: usize) {
