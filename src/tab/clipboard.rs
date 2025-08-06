@@ -37,10 +37,9 @@ impl Tab {
     }
 
     pub fn paste(&mut self) {
-        let mut text = take(&mut self.internal_clipboard);
-        let cursors = self.cursors.len();
-
-        if !internal_clipboard() {
+        let text = if internal_clipboard() {
+            self.internal_clipboard.clone()
+        } else {
             try_exec(false);
 
             let Ok(contents) = fs::read_to_string(TMP_PATH) else {
@@ -48,8 +47,10 @@ impl Tab {
                 return;
             };
 
-            text = contents;
-        }
+            contents
+        };
+
+        let cursors = self.cursors.len();
 
         if cursors > 1 {
             let regions = text.split(DELIMITER).count();
