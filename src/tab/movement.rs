@@ -229,26 +229,53 @@ impl Tab {
         }
 
         let line = &mut self.lines[cursor.y];
-        let mut proc_chars = 0;
-        let mut offset = 0;
+        let mut chars = 0;
 
-        for range in &line.ranges {
-            let end = offset + range.len;
-            let slice = &line.buffer[offset..end];
-            let chars = slice.chars().count();
-            let next = proc_chars + chars;
+        if self.syntax.is_some() {
+            let mut proc_chars = 0;
+            let mut offset = 0;
 
-            if cursor.x < next {
-                cursor.x = next;
-                cursor.sel_y = 0;
-                cursor.sel_x = -(chars as isize);
-                break;
+            for range in &line.ranges {
+                let end = offset + range.len;
+                let slice = &line.buffer[offset..end];
+                chars = slice.chars().count();
+                let next = proc_chars + chars;
+
+                if cursor.x < next {
+                    cursor.x = next;
+                    break;
+                }
+
+                proc_chars = next;
+                offset = end;
             }
+        } else {
+            let wspace = &[' ', '\t'];
+            let c_bytes = line.len_until(cursor.x);
 
-            proc_chars = next;
-            offset = end;
+            let before = &line.buffer[..c_bytes];
+            let pre = match before.rsplit_once(wspace) {
+                Some((_, l_side)) => l_side.len(),
+                None => before.len(),
+            };
+
+            let after = &line.buffer[c_bytes..];
+            let post = match after.split_once(wspace) {
+                Some((r_side, _)) => r_side.len(),
+                None => after.len(),
+            };
+
+            let start = c_bytes - pre;
+            let end = c_bytes + post;
+            let word_range = start..end;
+
+            let char_count = |s: &str| s.chars().count();
+            chars = char_count(&line.buffer[word_range]);
+            cursor.x = char_count(&line.buffer[..end]);
         }
 
+        cursor.sel_y = 0;
+        cursor.sel_x = -(chars as isize);
         line.dirty = true;
     }
 
