@@ -1,4 +1,4 @@
-use std::mem::{swap, take};
+use std::mem::{swap, take, replace};
 use std::{io, fs, cmp};
 use std::fmt::Write;
 use std::sync::Arc;
@@ -246,6 +246,14 @@ impl Tab {
         if sel_count != 0 {
             let _ = write!(dst, " [{sel_count}]");
         }
+    }
+
+    pub fn swap_latest_cursor(&mut self, c: usize) {
+        let original = self.latest_cursor();
+        let orig_id = self.cursors[original].id;
+        let target = &mut self.cursors[c].id;
+        let old_id = replace(target, orig_id);
+        self.cursors[original].id = old_id;
     }
 
     pub fn set_fully_dirty(&mut self) {

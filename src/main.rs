@@ -34,9 +34,11 @@ fn panic_handler(info: &panic::PanicHookInfo) {
 
 pub struct Application {
     // state
+    cursor_hover: Option<u16>,
     tree_select: Option<usize>,
     tree_hover: Option<u16>,
     tab_hover: Option<u16>,
+    num_cursors: u16,
     str_buf: String,
     list: TabList,
     stop: bool,
@@ -104,8 +106,8 @@ impl Application {
         let tab = self.tabs.current();
 
         let height = self.interface.tree_height();
-        let num_cursors = tab.cursor_count() as u16;
-        let cursor_lines = num_cursors.min(MAX_CURSORS);
+        self.num_cursors = tab.cursor_count() as u16;
+        let cursor_lines = self.num_cursors.min(MAX_CURSORS);
         let tree_lines = height.saturating_sub(cursor_lines + 1);
         self.tree.check_overscroll();
 
@@ -123,13 +125,14 @@ impl Application {
             self.str_buf.clear();
             let y = tree_lines + i + 1;
             tab.cursor_desc(i as usize, &mut self.str_buf);
-            self.interface.set_tree_row(false, false, y, &self.str_buf);
+            let hovered = self.cursor_hover == Some(i);
+            self.interface.set_tree_row(false, hovered, y, &self.str_buf);
         }
 
-        if num_cursors > MAX_CURSORS {
+        if self.num_cursors > MAX_CURSORS {
             self.str_buf.clear();
             let y = height.saturating_sub(1);
-            let missing = num_cursors - MAX_CURSORS;
+            let missing = self.num_cursors - MAX_CURSORS;
             let _ = write!(self.str_buf, "<{missing} other cursors>");
             self.interface.set_tree_row(false, false, y, &self.str_buf);
         }
@@ -331,6 +334,10 @@ impl Application {
                 self.update_tab_list(true);
                 self.update_left(true);
             },
+            UserInput::CursorClick(y) => {
+                tab.swap_latest_cursor(y as usize);
+                self.ensure_cursor_visible();
+            },
             UserInput::CloseTab => {
                 self.tabs.close(None);
                 self.update_left(FOR_CURSORS);
@@ -341,6 +348,14 @@ impl Application {
                 self.update_left(FOR_CURSORS);
                 self.update_tab_list(true);
             },
+            UserInput::TabHover(x) => {
+                let update_list = self.tab_hover != Some(x);
+                let cursor_hover = self.cursor_hover.take();
+                let tree_hover = self.tree_hover.take();
+                self.tab_hover = Some(x);
+                self.update_left(tree_hover.is_some() | cursor_hover.is_some());
+                self.update_tab_list(update_list);
+            },
             UserInput::TreeHover(y) => {
                 let update_left = self.tree_hover != Some(y);
                 let tab_hover = self.tab_hover.take();
@@ -348,17 +363,18 @@ impl Application {
                 self.update_left(update_left);
                 self.update_tab_list(tab_hover.is_some());
             },
-            UserInput::TabHover(x) => {
-                let update_list = self.tab_hover != Some(x);
-                let tree_hover = self.tree_hover.take();
-                self.tab_hover = Some(x);
-                self.update_left(tree_hover.is_some());
-                self.update_tab_list(update_list);
+            UserInput::CursorHover(y) => {
+                let update_left = self.cursor_hover != Some(y);
+                let tab_hover = self.tab_hover.take();
+                self.cursor_hover = Some(y);
+                self.update_left(update_left);
+                self.update_tab_list(tab_hover.is_some());
             },
             UserInput::ClearHover => {
+                let cursor_hover = self.cursor_hover.take();
                 let tree_hover = self.tree_hover.take();
                 let tab_hover = self.tab_hover.take();
-                self.update_left(tree_hover.is_some());
+                self.update_left(tree_hover.is_some() | cursor_hover.is_some());
                 self.update_tab_list(tab_hover.is_some());
             },
             UserInput::Reveal => {
@@ -393,7 +409,10 @@ impl Application {
 
             self.update_code();
 
-            let event = self.interface.read_event();
+            let event = self
+                .interface
+                .read_event(self.num_cursors);
+
             self.handle_event(event);
         }
     }
@@ -413,9 +432,11 @@ fn main() -> Result<(), &'static str> {
         list: TabList::new(),
         part_buf: Vec::new(),
         sel_buf: Vec::new(),
+        cursor_hover: None,
         tree_select: None,
         tree_hover: None,
         tab_hover: None,
+        num_cursors: 0,
         stop: false,
 
         // singletons

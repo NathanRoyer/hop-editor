@@ -28,8 +28,10 @@ pub enum UserInput {
     CodeDrag(u16, u16),
     Reveal,
     TreeClick(u16),
+    CursorClick(u16),
     TreeHover(u16),
     TabHover(u16),
+    CursorHover(u16),
     ClearHover,
     TabClick(u16),
     Backspace(bool),
@@ -55,6 +57,7 @@ enum Location {
     Menu,
     MenuEdge,
     TreeRow(u16),
+    Cursors(u16),
     Tab(u16),
     LineNo(u16),
     Code(u16, u16),
@@ -326,7 +329,8 @@ impl Interface {
         None
     }
 
-    fn cursor_pos(&self, x: u16, y: u16) -> Location {
+    fn cursor_pos(&self, x: u16, y: u16, num_cursors: u16) -> Location {
+        let cursors_y = self.height.saturating_sub(num_cursors + 1);
         let code_x = tree_width() + (LN_WIDTH as u16) + 3;
         let tree_y = MENU_HEIGHT + 1;
 
@@ -335,6 +339,10 @@ impl Interface {
         } else if x < tree_width() {
             if y < MENU_HEIGHT {
                 Location::Menu
+            } else if y == cursors_y {
+                Location::MenuEdge
+            } else if y > cursors_y {
+                Location::Cursors(y - (cursors_y + 1))
             } else if y >= tree_y {
                 Location::TreeRow(y - tree_y)
             } else {
@@ -349,7 +357,7 @@ impl Interface {
         }
     }
 
-    pub fn read_event(&self) -> UserInput {
+    pub fn read_event(&self, num_cursors: u16) -> UserInput {
         let code_height = self.code_height() as isize;
 
         match read().unwrap() {
@@ -401,9 +409,9 @@ impl Interface {
             Event::Mouse(e) => {
                 use {MouseEventKind::*, MouseButton::*};
                 let ctrl = e.modifiers.contains(KeyModifiers::CONTROL);
-                let pos = self.cursor_pos(e.column, e.row);
-                let debug = || {
-                    confirm!("invalid action:\n- event: {e:?}\n- pos: {pos:?}");
+                let pos = self.cursor_pos(e.column, e.row, num_cursors);
+                let unassigned = || {
+                    // confirm!("unassigned action:\n- event: {e:?}\n- pos: {pos:?}");
                     UserInput::NoOp
                 };
 
@@ -415,7 +423,7 @@ impl Interface {
                         Up(_) => UserInput::NoOp,
                         Drag(Left) => UserInput::CodeDrag(x, y),
                         Moved => UserInput::ClearHover,
-                        _ => debug(),
+                        _ => unassigned(),
                     },
                     Location::TreeRow(y) => match e.kind {
                         ScrollDown => UserInput::Scroll(1),
@@ -424,36 +432,43 @@ impl Interface {
                         Down(Left) => UserInput::TreeClick(y),
                         Moved => UserInput::TreeHover(y),
                         Drag(Left) => UserInput::NoOp,
-                        _ => debug(),
+                        _ => unassigned(),
+                    },
+                    Location::Cursors(y) => match e.kind {
+                        Up(_) => UserInput::NoOp,
+                        Down(Left) => UserInput::CursorClick(y),
+                        Moved => UserInput::CursorHover(y),
+                        Drag(Left) => UserInput::NoOp,
+                        _ => unassigned(),
                     },
                     Location::Tab(x) => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Down(Left) => UserInput::TabClick(x),
                         Moved => UserInput::TabHover(x),
                         Drag(Left) => UserInput::NoOp,
-                        _ => debug(),
+                        _ => unassigned(),
                     },
                     Location::LineNo(_y) => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
                         Drag(Left) => UserInput::NoOp,
-                        _ => debug(),
+                        _ => unassigned(),
                     },
                     Location::PanelSep => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
                         Drag(Left) => UserInput::NoOp,
-                        _ => debug(),
+                        _ => unassigned(),
                     },
                     Location::MenuEdge => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
-                        _ => debug(),
+                        _ => unassigned(),
                     },
                     Location::Menu => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
-                        _ => debug(),
+                        _ => unassigned(),
                     },
                 }
             },
