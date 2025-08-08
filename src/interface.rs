@@ -42,12 +42,21 @@ pub enum UserInput {
     Redo,
     SeekLineStart(bool),
     SeekLineEnd(bool),
+    PanelResize(bool),
     Scroll(isize),
     Resize(u16, u16),
     HorizontalJump(isize, bool),
     VerticalJump(isize, bool),
     AutoSelect,
     SelectAll,
+    NoOp,
+}
+
+pub enum ResizeEvent {
+    Drag(u16),
+    Right,
+    Left,
+    Stop,
     NoOp,
 }
 
@@ -66,6 +75,7 @@ enum Location {
 pub struct Interface {
     str_buf: String,
     stdout: Stdout,
+    panel_width: u16,
     height: u16,
     width: u16,
 }
@@ -85,6 +95,7 @@ impl Interface {
 
         Self {
             str_buf: String::with_capacity(1024),
+            panel_width: tree_width(),
             stdout,
             height,
             width,
@@ -114,7 +125,7 @@ impl Interface {
     }
 
     fn tabs_width(&self) -> usize {
-        self.width.saturating_sub(tree_width() + 1).into()
+        self.width.saturating_sub(self.panel_width + 1).into()
     }
 
     pub fn code_width(&self) -> usize {
@@ -122,7 +133,7 @@ impl Interface {
     }
 
     fn erase_tab_list(&mut self, offset: u16) {
-        let x = tree_width() + 1 + offset;
+        let x = self.panel_width + 1 + offset;
         let len = self.tabs_width().saturating_sub(offset.into());
 
         queue!(self.stdout, MoveTo(x, 0)).unwrap();
@@ -140,7 +151,7 @@ impl Interface {
         self.write_header(0, " Folders ");
 
         for y in 0..self.height {
-            queue!(self.stdout, MoveTo(tree_width(), y)).unwrap();
+            queue!(self.stdout, MoveTo(self.panel_width, y)).unwrap();
 
             let c = match y {
                 0 | 2 => '├',
@@ -179,7 +190,7 @@ impl Interface {
             queue!(self.stdout, SetAttribute(Attribute::Reverse)).unwrap();
         }
 
-        let max = tree_width().min(self.width) as usize;
+        let max = self.panel_width.min(self.width) as usize;
         let (cut, chars) = cut_len(text, max);
         self.write_text(0, MENU_HEIGHT + 1 + index, &text[..cut]);
 
@@ -190,13 +201,16 @@ impl Interface {
         let _ = self.stdout.flush();
     }
 
-    fn write_header(&mut self, y: u16, text: &str) {
+    fn write_header(&mut self, y: u16, mut text: &str) {
         queue!(self.stdout, SetForegroundColor(Color::Reset)).unwrap();
         queue!(self.stdout, MoveTo(0, MENU_HEIGHT + y)).unwrap();
-        let width = tree_width() as _;
-        if width >= text.chars().count() {
-            let _ = write!(self.stdout, "{:─^1$}┤", text, width);
+        let width = self.panel_width as usize;
+
+        if width < text.chars().count() {
+            text = "";
         }
+
+        let _ = write!(self.stdout, "{:─^1$}┤", text, width);
     }
 
     pub fn write_cursor_header(&mut self, y: u16) {
@@ -214,7 +228,7 @@ impl Interface {
         let _ = write!(&mut buf, "{:1$} ", line_no, LN_WIDTH);
 
         let y = TABS_HEIGHT + index;
-        let mut x = tree_width() + 1;
+        let mut x = self.panel_width + 1;
         self.write_text(x, y, &buf);
 
         x += LN_WIDTH as u16 + 2;
@@ -232,7 +246,7 @@ impl Interface {
         focused: usize,
         items: &TabList,
     ) {
-        let tabs = tree_width() + 1;
+        let tabs = self.panel_width + 1;
         let mut cursor = 0;
 
         for (i, (modified, tab_name)) in items.iter().enumerate() {
@@ -312,12 +326,12 @@ impl Interface {
 
     fn cursor_pos(&self, x: u16, y: u16, num_cursors: u16) -> Location {
         let cursors_y = self.height.saturating_sub(num_cursors + 1);
-        let code_x = tree_width() + (LN_WIDTH as u16) + 3;
+        let code_x = self.panel_width + (LN_WIDTH as u16) + 3;
         let tree_y = MENU_HEIGHT + 1;
 
-        if x == tree_width() {
+        if x == self.panel_width {
             Location::PanelSep
-        } else if x < tree_width() {
+        } else if x < self.panel_width {
             if y < MENU_HEIGHT {
                 Location::Menu
             } else if y == cursors_y {
@@ -330,7 +344,7 @@ impl Interface {
                 Location::MenuEdge
             }
         } else if y < 3 {
-            Location::Tab(x - tree_width() - 1)
+            Location::Tab(x - self.panel_width - 1)
         } else if x < code_x {
             Location::LineNo(y - 3)
         } else {
@@ -340,12 +354,14 @@ impl Interface {
 
     pub fn read_event(&self, num_cursors: u16) -> UserInput {
         let code_height = self.code_height() as isize;
+        let event = read().unwrap();
+
         let fallback = || {
-            // crate::confirm!("unassigned action:\n- event: {e:?}\n");
+            crate::confirm!("unassigned action:\n- event: {event:?}\n");
             UserInput::NoOp
         };
 
-        match read().unwrap() {
+        match &event {
             Event::Key(e) if e.is_release() => UserInput::NoOp,
             Event::Key(e) => {
                 let shift = e.modifiers.contains(KeyModifiers::SHIFT);
@@ -366,6 +382,7 @@ impl Interface {
                         KeyCode::Char('v') => UserInput::Paste,
                         KeyCode::Char('c') => UserInput::Copy,
                         KeyCode::Char('x') => UserInput::Cut,
+                        KeyCode::Home => UserInput::PanelResize(!shift),
                         KeyCode::Down => UserInput::Scroll(1),
                         KeyCode::Up => UserInput::Scroll(-1),
                         _ => fallback(),
@@ -441,9 +458,9 @@ impl Interface {
                         _ => mouse_fallback(),
                     },
                     Location::PanelSep => match e.kind {
-                        Up(_) => UserInput::NoOp,
+                        Down(Left) => UserInput::PanelResize(false),
                         Moved => UserInput::ClearHover,
-                        Drag(Left) => UserInput::NoOp,
+                        Up(_) => UserInput::NoOp,
                         _ => mouse_fallback(),
                     },
                     Location::MenuEdge => match e.kind {
@@ -458,8 +475,39 @@ impl Interface {
                     },
                 }
             },
-            Event::Resize(w, h) => UserInput::Resize(w, h),
+            Event::Resize(w, h) => UserInput::Resize(*w, *h),
             _other => fallback(),
+        }
+    }
+
+    pub fn get_panel_width(&self) -> u16 {
+        self.panel_width
+    }
+
+    pub fn panel_width_op<F: Fn(u16) -> u16 + ?Sized>(&mut self, op: &F) {
+        self.panel_width = op(self.panel_width);
+    }
+
+    pub fn panel_resize_event(&self) -> ResizeEvent {
+        match read().unwrap() {
+            Event::Key(e) => {
+                match e.code {
+                    KeyCode::Right => ResizeEvent::Right,
+                    KeyCode::Left => ResizeEvent::Left,
+                    KeyCode::Esc => ResizeEvent::Stop,
+                    _ => ResizeEvent::NoOp,
+                }
+            },
+            Event::Mouse(e) => {
+                use {MouseEventKind::*, MouseButton::*};
+                match e.kind {
+                    Drag(Left) => ResizeEvent::Drag(e.column),
+                    Moved => ResizeEvent::Stop,
+                    Up(_) => ResizeEvent::Stop,
+                    _ => ResizeEvent::NoOp,
+                }
+            },
+            _other => ResizeEvent::NoOp,
         }
     }
 }

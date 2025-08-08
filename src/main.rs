@@ -1,5 +1,5 @@
 use colored_text::{ColoredText, Part as TextPart, Selection};
-use interface::{Interface, UserInput, restore_term};
+use interface::{Interface, UserInput, ResizeEvent, restore_term};
 use tab::{TabMap, TabList};
 use syntax::SyntaxFile;
 use tree::FileTree;
@@ -36,6 +36,7 @@ pub struct Application {
     // state
     cursor_hover: Option<u16>,
     tree_select: Option<usize>,
+    fallback_panel_width: u16,
     tree_hover: Option<u16>,
     tab_hover: Option<u16>,
     num_cursors: u16,
@@ -302,12 +303,46 @@ impl Application {
         }
     }
 
+    fn resize_left_panel(&mut self, toggle: bool) {
+        if toggle {
+            let fallback = self.fallback_panel_width;
+
+            let op = move |n| match n {
+                0 => fallback,
+                _ => 0,
+            };
+
+            self.interface.panel_width_op(&op);
+            interface::set_dirty();
+            return;
+        }
+
+        loop {
+            let op: &dyn Fn(u16) -> u16 = match self.interface.panel_resize_event() {
+                ResizeEvent::Drag(y) => &move |_| y,
+                ResizeEvent::Right => &|n| n.saturating_add(1),
+                ResizeEvent::Left => &|n| n.saturating_sub(1),
+                ResizeEvent::Stop => break,
+                ResizeEvent::NoOp => &|n| n,
+            };
+
+            self.interface.panel_width_op(op);
+            self.interface.draw_decorations();
+            self.update_tab_list(true);
+            self.update_left(true);
+        }
+
+        self.fallback_panel_width = self.interface.get_panel_width();
+        self.tabs.current().set_fully_dirty();
+    }
+
     fn handle_event(&mut self, event: UserInput) {
         let tab = self.tabs.current();
 
         match event {
             UserInput::NoOp => (),
             UserInput::Quit(with_ctrl) => self.quit(with_ctrl),
+            UserInput::PanelResize(toggle) => self.resize_left_panel(toggle),
             UserInput::Save => {
                 tab.save();
                 self.update_tab_list(true);
@@ -425,6 +460,7 @@ impl Application {
 fn main() -> Result<(), &'static str> {
     config::init();
 
+    let fallback_panel_width = config::tree_width();
     let syntaxes = config::syntax_file();
     let mut interface = Interface::new();
     interface.draw_decorations();
@@ -433,6 +469,7 @@ fn main() -> Result<(), &'static str> {
         // state
         str_buf: String::new(),
         cursor_buf: Vec::new(),
+        fallback_panel_width,
         list: TabList::new(),
         part_buf: Vec::new(),
         sel_buf: Vec::new(),

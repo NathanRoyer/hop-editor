@@ -30,6 +30,7 @@ before quitting.
 | Drag                 | Replace cursors with a selection     |
 | Ctrl + Click         | Add a cursor                         |
 | Ctrl + Drag          | Add a selection                      |
+| Ctrl + A             | Select All                           |
 | Ctrl + D             | Auto-Select                          |
 | Arrows               | Move all cursors                     |
 | Ctrl + Right         | Move all cursors 10 characters ahead |
@@ -75,3 +76,11 @@ before quitting.
 | Left and Right       | Enter and Leave directories          |
 | Up and Down          | Navigate in tree                     |
 | Ctrl + F             | Find in tree                  [todo] |
+
+## Others
+
+| User Input           | Action                               |
+|----------------------|--------------------------------------|
+| Ctrl + Home          | Toggle Left Panel                    |
+| Ctrl + Shift + Home  | Resize Left Panel (using arrows)     |
+| Click + Drag Bar     | Resize Left Panel (using mouse)      |
