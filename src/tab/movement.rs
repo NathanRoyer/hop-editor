@@ -420,6 +420,24 @@ impl Tab {
 
         self.check_cursors();
     }
+
+    pub fn select_all(&mut self) {
+        let Some(last) = self.lines.last() else {
+            return;
+        };
+
+        let mut cursor = Cursor::new(0);
+
+        cursor.x = last.len_chars();
+        cursor.y = self.lines.len().saturating_sub(1);
+
+        cursor.sel_x = -(cursor.x as isize);
+        cursor.sel_y = -(cursor.y as isize);
+
+        self.cursors.clear();
+        self.cursors.push(cursor);
+        self.set_fully_dirty();
+    }
 }
 
 pub(super) trait AppendStr: Default {

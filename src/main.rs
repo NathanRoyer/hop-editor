@@ -263,6 +263,10 @@ impl Application {
                 self.ensure_cursor_visible();
                 self.update_left(FOR_CURSORS);
             },
+            UserInput::SelectAll => {
+                tab.select_all();
+                self.update_left(FOR_CURSORS);
+            },
             UserInput::Undo => {
                 tab.undo();
                 self.ensure_cursor_visible();

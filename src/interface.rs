@@ -48,6 +48,7 @@ pub enum UserInput {
     HorizontalJump(isize, bool),
     VerticalJump(isize, bool),
     AutoSelect,
+    SelectAll,
     NoOp,
 }
 
@@ -370,6 +371,7 @@ impl Interface {
                         KeyCode::Right => UserInput::HorizontalJump(10, shift),
                         KeyCode::Left => UserInput::HorizontalJump(-10, shift),
                         KeyCode::Char('d') => UserInput::AutoSelect,
+                        KeyCode::Char('a') => UserInput::SelectAll,
                         KeyCode::Char('w') => UserInput::CloseTab,
                         KeyCode::Char('o') => UserInput::Reveal,
                         KeyCode::Char('q') => UserInput::Quit(true),
