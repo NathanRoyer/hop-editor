@@ -9,7 +9,6 @@ use std::mem::take;
 use crate::config::{ansi_color, tree_width, default_bg_color, hover_color};
 use crate::colored_text::ColoredText;
 use crate::tab::TabList;
-use crate::confirm;
 
 const TABS_HEIGHT: u16 = 3;
 const MENU_HEIGHT: u16 = 4;
@@ -62,29 +61,6 @@ enum Location {
     Tab(u16),
     LineNo(u16),
     Code(u16, u16),
-}
-
-// todo get rid
-fn cut_len(text: &str, max: usize) -> (Option<usize>, usize) {
-    let mut num_chars = 0;
-    let mut len_chars = 0;
-
-    for c in text.chars() {
-        let next = num_chars + match c {
-            // todo use var
-            '\t' => 4,
-            _ => 1,
-        };
-
-        if next == max {
-            return (Some(len_chars), num_chars);
-        }
-
-        num_chars = next;
-        len_chars += c.len_utf8();
-    }
-
-    (None, num_chars)
 }
 
 pub struct Interface {
@@ -161,9 +137,7 @@ impl Interface {
 
     pub fn draw_decorations(&mut self) {
         queue!(self.stdout, Clear(ClearType::All)).unwrap();
-        queue!(self.stdout, SetForegroundColor(Color::Reset)).unwrap();
-        queue!(self.stdout, MoveTo(0, MENU_HEIGHT)).unwrap();
-        let _ = write!(self.stdout, "{:─^1$}", " Folders ", tree_width() as _);
+        self.write_header(0, " Folders ");
 
         for y in 0..self.height {
             queue!(self.stdout, MoveTo(tree_width(), y)).unwrap();
@@ -207,20 +181,26 @@ impl Interface {
 
         let max = tree_width().min(self.width) as usize;
         let (cut, chars) = cut_len(text, max);
-        let cut = cut.unwrap_or(text.len());
         self.write_text(0, MENU_HEIGHT + 1 + index, &text[..cut]);
 
         queue!(self.stdout, SetBackgroundColor(default_bg_color())).unwrap();
         queue!(self.stdout, SetAttribute(Attribute::NoReverse)).unwrap();
-        write!(self.stdout, "{:1$}│", "", max - chars).unwrap();
+        write!(self.stdout, "{:1$}│", "", max.saturating_sub(chars)).unwrap();
 
         let _ = self.stdout.flush();
     }
 
-    pub fn write_cursor_header(&mut self, y: u16) {
+    fn write_header(&mut self, y: u16, text: &str) {
         queue!(self.stdout, SetForegroundColor(Color::Reset)).unwrap();
         queue!(self.stdout, MoveTo(0, MENU_HEIGHT + y)).unwrap();
-        let _ = write!(self.stdout, "{:─^1$}┤", " Cursors ", tree_width() as _);
+        let width = tree_width() as _;
+        if width >= text.chars().count() {
+            let _ = write!(self.stdout, "{:─^1$}┤", text, width);
+        }
+    }
+
+    pub fn write_cursor_header(&mut self, y: u16) {
+        self.write_header(y, " Cursors ");
     }
 
     pub fn set_code_row(&mut self, index: u16, line_no: Option<usize>, mut text: ColoredText) {
@@ -360,6 +340,10 @@ impl Interface {
 
     pub fn read_event(&self, num_cursors: u16) -> UserInput {
         let code_height = self.code_height() as isize;
+        let fallback = || {
+            // crate::confirm!("unassigned action:\n- event: {e:?}\n");
+            UserInput::NoOp
+        };
 
         match read().unwrap() {
             Event::Key(e) if e.is_release() => UserInput::NoOp,
@@ -384,7 +368,7 @@ impl Interface {
                         KeyCode::Char('x') => UserInput::Cut,
                         KeyCode::Down => UserInput::Scroll(1),
                         KeyCode::Up => UserInput::Scroll(-1),
-                        _ => (confirm!("unk-ev: {e:?}"), UserInput::NoOp).1,
+                        _ => fallback(),
                     }
                 } else {
                     match e.code {
@@ -404,7 +388,7 @@ impl Interface {
                         KeyCode::End => UserInput::SeekLineEnd(shift),
                         KeyCode::Tab => UserInput::Insert('\t'),
                         KeyCode::Esc => UserInput::Quit(false),
-                        _ => (confirm!("unk-ev: {e:?}"), UserInput::NoOp).1,
+                        _ => fallback(),
                     }
                 }
             },
@@ -412,8 +396,8 @@ impl Interface {
                 use {MouseEventKind::*, MouseButton::*};
                 let ctrl = e.modifiers.contains(KeyModifiers::CONTROL);
                 let pos = self.cursor_pos(e.column, e.row, num_cursors);
-                let unassigned = || {
-                    // confirm!("unassigned action:\n- event: {e:?}\n- pos: {pos:?}");
+                let mouse_fallback = || {
+                    // crate::confirm!("unassigned action:\n- event: {e:?}\n- pos: {pos:?}");
                     UserInput::NoOp
                 };
 
@@ -425,7 +409,7 @@ impl Interface {
                         Up(_) => UserInput::NoOp,
                         Drag(Left) => UserInput::CodeDrag(x, y),
                         Moved => UserInput::ClearHover,
-                        _ => unassigned(),
+                        _ => mouse_fallback(),
                     },
                     Location::TreeRow(y) => match e.kind {
                         ScrollDown => UserInput::Scroll(1),
@@ -434,50 +418,66 @@ impl Interface {
                         Down(Left) => UserInput::TreeClick(y),
                         Moved => UserInput::TreeHover(y),
                         Drag(Left) => UserInput::NoOp,
-                        _ => unassigned(),
+                        _ => mouse_fallback(),
                     },
                     Location::Cursors(y) => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Down(Left) => UserInput::CursorClick(y),
                         Moved => UserInput::CursorHover(y),
                         Drag(Left) => UserInput::NoOp,
-                        _ => unassigned(),
+                        _ => mouse_fallback(),
                     },
                     Location::Tab(x) => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Down(Left) => UserInput::TabClick(x),
                         Moved => UserInput::TabHover(x),
                         Drag(Left) => UserInput::NoOp,
-                        _ => unassigned(),
+                        _ => mouse_fallback(),
                     },
                     Location::LineNo(_y) => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
                         Drag(Left) => UserInput::NoOp,
-                        _ => unassigned(),
+                        _ => mouse_fallback(),
                     },
                     Location::PanelSep => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
                         Drag(Left) => UserInput::NoOp,
-                        _ => unassigned(),
+                        _ => mouse_fallback(),
                     },
                     Location::MenuEdge => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
-                        _ => unassigned(),
+                        _ => mouse_fallback(),
                     },
                     Location::Menu => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Moved => UserInput::ClearHover,
-                        _ => unassigned(),
+                        _ => mouse_fallback(),
                     },
                 }
             },
             Event::Resize(w, h) => UserInput::Resize(w, h),
-            e => (confirm!("unk-ev: {e:?}"), UserInput::NoOp).1,
+            _other => fallback(),
         }
     }
+}
+
+fn cut_len(text: &str, max: usize) -> (usize, usize) {
+    let mut num_chars = 0;
+    let mut len_chars = 0;
+
+    for c in text.chars() {
+        if num_chars == max {
+            break;
+        }
+
+        num_chars += 1;
+        len_chars += c.len_utf8();
+    }
+
+    (len_chars, num_chars)
 }
 
 pub fn set_dirty() {
