@@ -17,7 +17,7 @@ const LN_WIDTH: usize = 4;
 
 static DIRTY: AtomicBool = AtomicBool::new(true);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum UserInput {
     Quit(bool),
     Save,

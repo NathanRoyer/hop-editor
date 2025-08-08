@@ -32,13 +32,14 @@ fn panic_handler(info: &panic::PanicHookInfo) {
     restore_term();
 }
 
-pub struct Globals {
+pub struct Application {
     // state
     tree_select: Option<usize>,
     tree_hover: Option<u16>,
     tab_hover: Option<u16>,
     str_buf: String,
     list: TabList,
+    stop: bool,
 
     // these three should stay sorted
     part_buf: Vec<TextPart>,
@@ -52,10 +53,12 @@ pub struct Globals {
     tabs: TabMap,
 }
 
-impl Globals {
-    fn update_tab_list(&mut self) {
-        let focused = self.tabs.update_tab_list(&mut self.list);
-        self.interface.set_tab_list(self.tab_hover, focused, &self.list);
+impl Application {
+    fn update_tab_list(&mut self, actually: bool) {
+        if actually {
+            let focused = self.tabs.update_tab_list(&mut self.list);
+            self.interface.set_tab_list(self.tab_hover, focused, &self.list);
+        }
     }
 
     fn update_code(&mut self) {
@@ -93,7 +96,11 @@ impl Globals {
         }
     }
 
-    fn update_left(&mut self) {
+    fn update_left(&mut self, actually: bool) {
+        if !actually {
+            return;
+        }
+
         let tab = self.tabs.current();
 
         let height = self.interface.tree_height();
@@ -128,209 +135,266 @@ impl Globals {
         }
     }
 
+    fn quit(&mut self, with_ctrl: bool) {
+        if !with_ctrl {
+            let tab = self.tabs.current();
+
+            if self.tree_select.is_some() {
+                self.tree_select = None;
+                self.update_left(true);
+                return;
+            } else if tab.has_selections() {
+                tab.horizontal_jump(0, false);
+                return;
+            }
+        }
+
+        self.stop = match self.tabs.all_saved() {
+            true => true,
+            false => confirm!("{}", CONFIRM_QUIT),
+        };
+    }
+
+    fn scroll(&mut self, delta: isize) {
+        if self.tree_hover.is_none() && self.tree_select.is_none() {
+            self.tabs.current().scroll(delta);
+        } else {
+            self.tree.scroll(delta);
+            self.update_left(true);
+        }
+    }
+
+    fn ensure_cursor_visible(&mut self) {
+        let h = self.interface.code_height() as usize;
+        let w = self.interface.code_width();
+        let tab = self.tabs.current();
+        tab.ensure_cursor_visible(w, h);
+    }
+
+    fn insert(&mut self, c: char) {
+        if let Some(i) = self.tree_select {
+            if matches!(c, '\n' | ' ') {
+                if let Some(path) = self.tree.toggle_or_open(i) {
+                    if let Err(err) = self.tabs.open(&self.syntaxes, path) {
+                        confirm!("failed to open: {err:?}");
+                    }
+                }
+
+                self.update_left(true);
+                self.update_tab_list(true);
+            }
+        } else {
+            let tab = self.tabs.current();
+            let no_mod = !tab.modified();
+            tab.insert_char(c);
+            self.ensure_cursor_visible();
+            self.update_tab_list(no_mod);
+            self.update_left(FOR_CURSORS);
+        }
+    }
+
+    fn horizontal_jump(&mut self, delta: isize, shift: bool) {
+        if let Some(i) = self.tree_select.as_mut() {
+            match delta < 0 {
+                true => self.tree.leave_dir(i),
+                false => self.tree.enter_dir(i),
+            }
+
+            self.update_left(true);
+        } else {
+            let tab = self.tabs.current();
+            tab.horizontal_jump(delta, shift);
+            self.ensure_cursor_visible();
+            self.update_left(FOR_CURSORS);
+        }
+    }
+
+    fn vertical_jump(&mut self, delta: isize, shift: bool) {
+        if let Some(i) = self.tree_select.as_mut() {
+            if !shift {
+                self.tree.up_down(i, delta);
+                self.update_left(true);
+            }
+        } else {
+            let tab = self.tabs.current();
+            tab.vertical_jump(delta, shift);
+            self.ensure_cursor_visible();
+            self.update_left(FOR_CURSORS);
+        }
+    }
+
+    fn handle_tab_event(&mut self, event: UserInput) {
+        if self.tree_select.is_some() {
+            return;
+        };
+
+        let tab = self.tabs.current();
+        let no_mod = !tab.modified();
+
+        match event {
+            UserInput::Insert(c) => {
+                tab.insert_char(c);
+                self.ensure_cursor_visible();
+                self.update_tab_list(no_mod);
+                self.update_left(FOR_CURSORS);
+            },
+            UserInput::Paste => {
+                tab.paste();
+                self.ensure_cursor_visible();
+                self.update_left(FOR_CURSORS);
+            },
+            UserInput::Copy => tab.copy(),
+            UserInput::Cut => {
+                tab.cut();
+                self.ensure_cursor_visible();
+                self.update_left(FOR_CURSORS);
+            },
+            UserInput::Backspace(forward) => {
+                tab.backspace_once(forward);
+                self.ensure_cursor_visible();
+                self.update_tab_list(no_mod);
+                self.update_left(FOR_CURSORS);
+            },
+            UserInput::AutoSelect => {
+                tab.auto_select();
+                self.ensure_cursor_visible();
+                self.update_left(FOR_CURSORS);
+            },
+            UserInput::Undo => {
+                tab.undo();
+                self.ensure_cursor_visible();
+                self.update_left(FOR_CURSORS);
+            },
+            UserInput::Redo => {
+                tab.redo();
+                self.ensure_cursor_visible();
+                self.update_left(FOR_CURSORS);
+            },
+            UserInput::Find => {
+                if let Some(text) = prompt!("{}", FIND_PROMPT) {
+                    tab.find_all(&text);
+                    self.update_left(FOR_CURSORS);
+                }
+            },
+            UserInput::SeekLineStart(s) => {
+                tab.line_seek(true, s);
+                self.ensure_cursor_visible();
+                self.update_left(FOR_CURSORS);
+            },
+            UserInput::SeekLineEnd(s) => {
+                tab.line_seek(false, s);
+                self.ensure_cursor_visible();
+                self.update_left(FOR_CURSORS);
+            },
+            UserInput::CodeDrag(x, y) => {
+                tab.drag_to(x, y);
+                self.ensure_cursor_visible();
+                self.update_left(FOR_CURSORS);
+            },
+            other => _ = confirm!("BUG: bad code path for {other:?}"),
+        }
+    }
+
+    fn handle_event(&mut self, event: UserInput) {
+        let tab = self.tabs.current();
+
+        match event {
+            UserInput::NoOp => (),
+            UserInput::Quit(with_ctrl) => self.quit(with_ctrl),
+            UserInput::Save => {
+                tab.save();
+                self.update_tab_list(true);
+            },
+            UserInput::CodeSeek(x, y, push_c) => {
+                tab.seek(x, y, push_c);
+                let _tree_select = self.tree_select.take();
+                // self.update_left(_tree_select.is_some());
+                self.update_left(FOR_CURSORS);
+                self.ensure_cursor_visible();
+            },
+            UserInput::TabClick(x) => {
+                if let Some(index) = self.interface.find_tab(x, &self.list) {
+                    self.tree_select.take();
+                    self.tabs.switch(index);
+                    self.update_tab_list(true);
+                    self.update_left(FOR_CURSORS);
+                }
+            },
+            UserInput::TreeClick(y) => {
+                if let Some(path) = self.tree.click(y) {
+                    if let Err(err) = self.tabs.open(&self.syntaxes, path) {
+                        confirm!("failed to open: {err:?}");
+                    }
+                }
+
+                self.tree_select.take();
+                self.update_tab_list(true);
+                self.update_left(true);
+            },
+            UserInput::CloseTab => {
+                self.tabs.close(None);
+                self.update_left(FOR_CURSORS);
+                self.update_tab_list(true);
+            },
+            UserInput::NextTab(leftward) => {
+                self.tabs.next_tab(leftward);
+                self.update_left(FOR_CURSORS);
+                self.update_tab_list(true);
+            },
+            UserInput::TreeHover(y) => {
+                let update_left = self.tree_hover != Some(y);
+                let tab_hover = self.tab_hover.take();
+                self.tree_hover = Some(y);
+                self.update_left(update_left);
+                self.update_tab_list(tab_hover.is_some());
+            },
+            UserInput::TabHover(x) => {
+                let update_list = self.tab_hover != Some(x);
+                let tree_hover = self.tree_hover.take();
+                self.tab_hover = Some(x);
+                self.update_left(tree_hover.is_some());
+                self.update_tab_list(update_list);
+            },
+            UserInput::ClearHover => {
+                let tree_hover = self.tree_hover.take();
+                let tab_hover = self.tab_hover.take();
+                self.update_left(tree_hover.is_some());
+                self.update_tab_list(tab_hover.is_some());
+            },
+            UserInput::Reveal => {
+                let path = tab.path().unwrap_or("");
+                let index = self.tree.reveal_path(path).unwrap_or(0);
+                self.tree_select = Some(index);
+                self.update_left(true);
+            },
+            UserInput::HorizontalJump(d, s) => self.horizontal_jump(d, s),
+            UserInput::VerticalJump(d, s) => self.vertical_jump(d, s),
+            UserInput::Resize(w, h) => self.interface.resize(w, h),
+            UserInput::Scroll(delta) => self.scroll(delta),
+            UserInput::Insert(c) => self.insert(c),
+            other => self.handle_tab_event(other),
+        }
+    }
+
     fn run(&mut self) {
         self.interface.draw_decorations();
         panic::set_hook(Box::new(panic_handler));
 
-        loop {
-            let code_h = self.interface.code_height() as usize;
-            let code_w = self.interface.code_width();
-
+        while !self.stop {
             let tab = self.tabs.current();
             tab.check_overscroll();
 
             if self.interface.must_refresh() {
                 self.interface.draw_decorations();
                 tab.set_fully_dirty();
-                self.update_tab_list();
-                self.update_left();
+                self.update_tab_list(true);
+                self.update_left(true);
             }
 
             self.update_code();
-            let tab = self.tabs.current();
-            let no_mod = !tab.modified();
-            let mut update_list = false;
-            let mut update_left = false;
 
-            match (self.tree_select.as_mut(), self.interface.read_event()) {
-                (Some(_), UserInput::Quit(false)) => {
-                    self.tree_select = None;
-                    update_left = true;
-                },
-                (None, UserInput::Quit(false)) if tab.has_selections() => {
-                    tab.horizontal_jump(0, false);
-                },
-                (_, UserInput::Quit(_)) => match self.tabs.all_saved() {
-                    true => break,
-                    false if confirm!("{}", CONFIRM_QUIT) => break,
-                    _otherwise => (/* do not quit */),
-                },
-                (_, UserInput::Save) => {
-                    tab.save();
-                    update_list = true;
-                },
-                (None, UserInput::Insert(c)) => {
-                    tab.insert_char(c);
-                    tab.ensure_cursor_visible(code_w, code_h);
-                    update_list = no_mod;
-                    update_left = FOR_CURSORS;
-                },
-                (None, UserInput::Paste) => {
-                    tab.paste();
-                    tab.ensure_cursor_visible(code_w, code_h);
-                    update_left = FOR_CURSORS;
-                },
-                (None, UserInput::Copy) => tab.copy(),
-                (None, UserInput::Cut) => {
-                    tab.cut();
-                    tab.ensure_cursor_visible(code_w, code_h);
-                    update_left = FOR_CURSORS;
-                },
-                (None, UserInput::Backspace(forward)) => {
-                    tab.backspace_once(forward);
-                    tab.ensure_cursor_visible(code_w, code_h);
-                    update_list = no_mod;
-                    update_left = FOR_CURSORS;
-                },
-                (None, UserInput::Scroll(delta)) if self.tree_hover.is_none() => tab.scroll(delta),
-                (_, UserInput::Scroll(delta)) => {
-                    self.tree.scroll(delta);
-                    update_left = true;
-                },
-                (_, UserInput::CodeSeek(x, y, push_c)) => {
-                    // update_left = self.tree_select.take().is_some();
-                    update_left = FOR_CURSORS;
-                    tab.seek(x, y, push_c);
-                    tab.ensure_cursor_visible(code_w, code_h);
-                },
-                (None, UserInput::CodeDrag(x, y)) => {
-                    tab.drag_to(x, y);
-                    tab.ensure_cursor_visible(code_w, code_h);
-                    update_left = FOR_CURSORS;
-                },
-                (_, UserInput::TabClick(x)) => {
-                    if let Some(index) = self.interface.find_tab(x, &self.list) {
-                        self.tree_select.take();
-                        self.tabs.switch(index);
-                        update_list = true;
-                        update_left = FOR_CURSORS;
-                    }
-                },
-                (_, UserInput::TreeClick(y)) => {
-                    if let Some(path) = self.tree.click(y) {
-                        if let Err(err) = self.tabs.open(&self.syntaxes, path) {
-                            confirm!("failed to open: {err:?}");
-                        }
-                    }
-
-                    self.tree_select.take();
-                    update_list = true;
-                    update_left = true;
-                },
-                (_, UserInput::CloseTab) => {
-                    self.tabs.close(None);
-                    update_left = FOR_CURSORS;
-                    update_list = true;
-                },
-                (_, UserInput::NextTab(leftward)) => {
-                    self.tabs.next_tab(leftward);
-                    update_left = FOR_CURSORS;
-                    update_list = true;
-                },
-                (_, UserInput::TreeHover(y)) => {
-                    update_left = self.tree_hover != Some(y);
-                    update_list = self.tab_hover.take().is_some();
-                    self.tree_hover = Some(y);
-                },
-                (_, UserInput::TabHover(x)) => {
-                    update_list = self.tab_hover != Some(x);
-                    update_left = self.tree_hover.take().is_some();
-                    self.tab_hover = Some(x);
-                },
-                (_, UserInput::ClearHover) => {
-                    update_left = self.tree_hover.take().is_some();
-                    update_list = self.tab_hover.take().is_some();
-                },
-                (_, UserInput::Reveal) => {
-                    let path = tab.path().unwrap_or("");
-                    let index = self.tree.reveal_path(path).unwrap_or(0);
-                    self.tree_select = Some(index);
-                    update_left = true;
-                },
-                (None, UserInput::HorizontalJump(d, s)) => {
-                    tab.horizontal_jump(d, s);
-                    tab.ensure_cursor_visible(code_w, code_h);
-                    update_left = FOR_CURSORS;
-                },
-                (None, UserInput::VerticalJump(d, s)) => {
-                    tab.vertical_jump(d, s);
-                    tab.ensure_cursor_visible(code_w, code_h);
-                    update_left = FOR_CURSORS;
-                },
-                (Some(i), UserInput::HorizontalJump(-1, false)) => {
-                    self.tree.leave_dir(i);
-                    update_left = true;
-                },
-                (Some(i), UserInput::HorizontalJump(1, false)) => {
-                    self.tree.enter_dir(i);
-                    update_left = true;
-                },
-                (Some(i), UserInput::VerticalJump(d, false)) => {
-                    self.tree.up_down(i, d);
-                    update_left = true;
-                },
-                (Some(i), UserInput::Insert('\n' | ' ')) => {
-                    if let Some(path) = self.tree.toggle_or_open(*i) {
-                        if let Err(err) = self.tabs.open(&self.syntaxes, path) {
-                            confirm!("failed to open: {err:?}");
-                        }
-                    }
-
-                    update_left = true;
-                    update_list = true;
-                },
-                (_, UserInput::Resize(w, h)) => self.interface.resize(w, h),
-                (None, UserInput::AutoSelect) => {
-                    tab.auto_select();
-                    tab.ensure_cursor_visible(code_w, code_h);
-                    update_left = FOR_CURSORS;
-                },
-                (None, UserInput::Undo) => {
-                    tab.undo();
-                    tab.ensure_cursor_visible(code_w, code_h);
-                    update_left = FOR_CURSORS;
-                },
-                (None, UserInput::Redo) => {
-                    tab.redo();
-                    tab.ensure_cursor_visible(code_w, code_h);
-                    update_left = FOR_CURSORS;
-                },
-                (None, UserInput::Find) => {
-                    if let Some(text) = prompt!("{}", FIND_PROMPT) {
-                        tab.find_all(&text);
-                        update_left = FOR_CURSORS;
-                    }
-                },
-                (None, UserInput::SeekLineStart(s)) => {
-                    tab.line_seek(true, s);
-                    tab.ensure_cursor_visible(code_w, code_h);
-                    update_left = FOR_CURSORS;
-                },
-                (None, UserInput::SeekLineEnd(s)) => {
-                    tab.line_seek(false, s);
-                    tab.ensure_cursor_visible(code_w, code_h);
-                    update_left = FOR_CURSORS;
-                },
-                _others => (),
-            }
-
-            if update_left {
-                self.update_left();
-            }
-
-            if update_list {
-                self.update_tab_list();
-            }
+            let event = self.interface.read_event();
+            self.handle_event(event);
         }
     }
 }
@@ -342,7 +406,7 @@ fn main() -> Result<(), &'static str> {
     let mut interface = Interface::new();
     interface.draw_decorations();
 
-    let mut globals = Globals {
+    let mut app = Application {
         // state
         str_buf: String::new(),
         cursor_buf: Vec::new(),
@@ -352,6 +416,7 @@ fn main() -> Result<(), &'static str> {
         tree_select: None,
         tree_hover: None,
         tab_hover: None,
+        stop: false,
 
         // singletons
         interface,
@@ -375,16 +440,16 @@ fn main() -> Result<(), &'static str> {
         };
 
         if path.is_dir() {
-            globals.tree.add_folder(path_str);
-        } else if let Err(err) = globals.tabs.open(&globals.syntaxes, path_str) {
+            app.tree.add_folder(path_str);
+        } else if let Err(err) = app.tabs.open(&app.syntaxes, path_str) {
             restore_term();
             println!("{err:?}");
             return Err("failed to open some files");
         }
     }
 
-    globals.run();
-    globals.interface.close();
+    app.run();
+    app.interface.close();
 
     Ok(())
 }

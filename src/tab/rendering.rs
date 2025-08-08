@@ -17,6 +17,27 @@ impl Tab {
         }
     }
 
+    pub(super) fn check_line_highlighting(&mut self, index: usize) {
+        let Some(syntax) = self.syntax.as_ref() else {
+            return;
+        };
+
+        let mut ctx = match index.checked_sub(1) {
+            Some(j) => self.lines[j].eol_ctx,
+            None => None,
+        };
+
+        let line = &mut self.lines[index];
+        ctx = syntax.highlight(ctx, &mut line.ranges, &line.buffer);
+
+        if line.eol_ctx == ctx {
+            return;
+        }
+
+        // confirm!("flushing later lines");
+        self.set_lines_dirty(index);
+    }
+
     pub fn prepare_draw(&mut self, y: u16) -> Option<(usize, bool)> {
         let i = self.line_index(y)?;
         let line = self.lines.get_mut(i)?;

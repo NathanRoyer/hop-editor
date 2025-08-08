@@ -23,13 +23,14 @@ impl Tab {
     }
 
     fn insert_text_no_lf(&mut self, c: usize, text: &str) {
-        let cursor = &mut self.cursors[c];
+        let cursor = self.cursors[c];
 
         let line = &mut self.lines[cursor.y];
         let offset = line.len_until(cursor.x);
         line.buffer.insert_str(offset, text);
         line.dirty = true;
 
+        self.check_line_highlighting(cursor.y);
         self.add_to_cursors(c, false, text.len());
     }
 

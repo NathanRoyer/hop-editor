@@ -52,6 +52,7 @@ impl Tab {
         line.buffer.replace_range(new_i..old_i, "");
         line.dirty = true;
 
+        self.check_line_highlighting(cursor.y);
         self.backspace_cursor(c, false, -(num_chars as isize));
     }
 
