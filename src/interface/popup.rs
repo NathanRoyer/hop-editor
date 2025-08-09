@@ -28,7 +28,8 @@ macro_rules! confirm {
     }
 }
 
-pub fn _confirm(text: String) -> bool {
+pub fn _confirm(mut text: String) -> bool {
+    text += "\n\n- Press Enter to validate.\n- Press Escape to cancel.";
     popup(text);
 
     loop {

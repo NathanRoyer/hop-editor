@@ -12,6 +12,7 @@ use crate::tab::TabList;
 pub mod colored_text;
 pub mod popup;
 pub mod input;
+pub mod menu;
 
 const TABS_HEIGHT: u16 = 3;
 const MENU_HEIGHT: u16 = 4;
@@ -87,13 +88,14 @@ impl Interface {
         let _ = write!(self.stdout, "{:╌^1$}", "", len);
 
         queue!(self.stdout, MoveTo(x, 1)).unwrap();
-        let _ = write!(self.stdout, "{: ^1$}", "", len);
+        let _ = write!(self.stdout, "{:1$}", "", len);
 
         queue!(self.stdout, MoveTo(x, 2)).unwrap();
         let _ = write!(self.stdout, "{:╌^1$}", "", len);
     }
 
     pub fn draw_decorations(&mut self) {
+        queue!(self.stdout, SetBackgroundColor(Color::Reset)).unwrap();
         queue!(self.stdout, Clear(ClearType::All)).unwrap();
         self.write_header(0, " Folders ");
 
