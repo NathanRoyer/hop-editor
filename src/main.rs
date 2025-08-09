@@ -1,5 +1,6 @@
-use colored_text::{ColoredText, Part as TextPart, Selection};
-use interface::{Interface, UserInput, ResizeEvent, restore_term};
+use interface::colored_text::{ColoredText, Part as TextPart, Selection};
+use interface::input::{UserInput, ResizeEvent};
+use interface::{Interface, restore_term};
 use tab::{TabMap, TabList};
 use syntax::SyntaxFile;
 use tree::FileTree;
@@ -7,7 +8,6 @@ use tree::FileTree;
 use std::{env, fs, panic, backtrace};
 use std::fmt::Write;
 
-mod colored_text;
 mod interface;
 mod config;
 mod syntax;

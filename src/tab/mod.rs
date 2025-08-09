@@ -3,8 +3,8 @@ use std::{io, fs, cmp};
 use std::fmt::Write;
 use std::sync::Arc;
 
+use crate::interface::colored_text::{Part as TextPart, Selection};
 use crate::syntax::{Range, SyntaxFile, SyntaxConfig, LineContext};
-use crate::colored_text::{Part as TextPart, Selection};
 use crate::confirm;
 
 use history::History;
