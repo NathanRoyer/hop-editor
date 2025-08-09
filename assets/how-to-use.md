@@ -85,3 +85,4 @@ before quitting.
 | Ctrl + Home          | Toggle Left Panel                    |
 | Ctrl + Shift + Home  | Resize Left Panel (using arrows)     |
 | Click + Drag Bar     | Resize Left Panel (using mouse)      |
+| Right Click File/Dir | File/Dir context menu                |

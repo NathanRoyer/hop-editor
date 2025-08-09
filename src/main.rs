@@ -1,5 +1,6 @@
 use interface::colored_text::{ColoredText, Part as TextPart, Selection};
-use interface::input::{UserInput, ResizeEvent};
+use interface::input::{UserInput, ResizeEvent, Location};
+use interface::menu::{MenuItem, context_menu};
 use interface::{Interface, restore_term};
 use tab::{TabMap, TabList};
 use syntax::SyntaxFile;
@@ -14,8 +15,8 @@ mod syntax;
 mod tree;
 mod tab;
 
-const CONFIRM_QUIT: &str = "[UNSAVED FILES]\nSome files have unsaved edits!\n- Press Enter to quit.\n- Press Escape to cancel.";
-const FIND_PROMPT: &str = "Please input the text to look for.\n- Press Enter to reveal results.\n- Press Escape to cancel.";
+const CONFIRM_QUIT: &str = "[UNSAVED FILES]\nReally Quit? Some files have unsaved edits!";
+const FIND_PROMPT: &str = "Please input the text to look for.";
 
 const DEFAULT_CONFIG: &str = include_str!("../assets/config.toml");
 const DEFAULT_SYNTAX: &str = include_str!("../assets/syntax.toml");
@@ -348,6 +349,18 @@ impl Application {
             UserInput::Save => {
                 tab.save();
                 self.update_tab_list(true);
+            },
+            UserInput::ContextMenu(Location::TreeRow(row), x, y) => {
+                let is_in_use = |p: &str| self.tabs.is_in_use(p);
+                self.tree.right_click(x, y, row, is_in_use);
+                self.update_left(true);
+            },
+            UserInput::ContextMenu(Location::Tab(col), x, y) => {
+                if self.interface.find_tab(col, &self.list).is_some() {
+                    if context_menu(x, y, &[MenuItem::CloseTab]).is_some() {
+                        self.handle_event(UserInput::CloseTab(Some(col)));
+                    }
+                }
             },
             UserInput::CodeSeek(x, y, push_c) => {
                 tab.seek(x, y, push_c);

@@ -31,6 +31,7 @@ pub enum UserInput {
     Resize(u16, u16),
     HorizontalJump(isize, bool),
     VerticalJump(isize, bool),
+    ContextMenu(Location, u16, u16),
     AutoSelect,
     SelectAll,
     NoOp,
@@ -44,8 +45,8 @@ pub enum ResizeEvent {
     NoOp,
 }
 
-#[derive(Debug)]
-enum Location {
+#[derive(Copy, Clone, Debug)]
+pub enum Location {
     PanelSep,
     Menu,
     MenuEdge,
@@ -146,6 +147,8 @@ impl Interface {
                 use {MouseEventKind::*, MouseButton::*};
                 let ctrl = e.modifiers.contains(KeyModifiers::CONTROL);
                 let pos = self.cursor_pos(e.column, e.row, num_cursors);
+                let context_menu = UserInput::ContextMenu(pos, e.column, e.row);
+
                 let mouse_fallback = || {
                     // crate::confirm!("unassigned action:\n- event: {e:?}\n- pos: {pos:?}");
                     UserInput::NoOp
@@ -166,6 +169,7 @@ impl Interface {
                         ScrollUp => UserInput::Scroll(-1),
                         Up(_) => UserInput::NoOp,
                         Down(Left) => UserInput::TreeClick(y),
+                        Down(Right) => context_menu,
                         Moved => UserInput::TreeHover(y),
                         Drag(Left) => UserInput::NoOp,
                         _ => mouse_fallback(),
@@ -181,6 +185,7 @@ impl Interface {
                         Up(_) => UserInput::NoOp,
                         Down(Left) => UserInput::TabClick(x),
                         Down(Middle) => UserInput::CloseTab(Some(x)),
+                        Down(Right) => context_menu,
                         Moved => UserInput::TabHover(x),
                         Drag(Left) => UserInput::NoOp,
                         _ => mouse_fallback(),

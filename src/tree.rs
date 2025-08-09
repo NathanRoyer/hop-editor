@@ -1,7 +1,9 @@
-use crate::config::hide_folder;
 use std::{io, fs, cmp};
 use std::fmt::Write;
-use crate::confirm;
+
+use crate::interface::menu::{MenuItem, context_menu};
+use crate::config::hide_folder;
+use crate::{confirm, prompt};
 
 // syms: ▷▽▶▼;
 
@@ -16,17 +18,21 @@ pub struct FileTree {
     scroll: usize,
 }
 
+fn pop_dir_slash(text: &str) -> &str {
+    let dec = text.ends_with('/') as usize;
+    let base_len = text.len() - dec;
+    &text[..base_len]
+}
+
 impl Entry {
     fn name(&self) -> &str {
         let mut pre_len = 0;
 
         if self.is_trunk() {
-            let dec = self.is_dir() as usize;
-            let base_len = self.name_or_path.len() - dec;
-            let base = &self.name_or_path[..base_len];
+            let base = pop_dir_slash(&self.name_or_path);
 
-            if let Some((pre, _)) = base.rsplit_once('/') {
-                pre_len = pre.len() + 1;
+            if let Some(index) = base.rfind('/') {
+                pre_len = index + 1;
             }
         }
 
@@ -200,6 +206,140 @@ impl FileTree {
         }
     }
 
+    pub fn right_click<F: Fn(&str) -> bool>(
+        &mut self,
+        x: u16,
+        y: u16,
+        entry: u16,
+        is_in_use: F,
+    ) {
+        use MenuItem::*;
+
+        let i = entry as usize + self.scroll;
+        let Some(entry) = self.entries.get(i) else {
+            return;
+        };
+
+        let options = match entry.is_dir() {
+            true => [NewFile, NewDir, Rename, Delete].as_slice(),
+            false => [Rename, Delete].as_slice(),
+        };
+
+        if let Some(action) = context_menu(x, y, options) {
+            if let Err(error) = self.affect(i, action, is_in_use) {
+                confirm!("Failed: {error:?}");
+            }
+        }
+    }
+
+    fn affect<F: Fn(&str) -> bool>(
+        &mut self,
+        i: usize,
+        action: MenuItem,
+        is_in_use: F,
+    ) -> io::Result<()> {
+        use MenuItem::*;
+
+        let mut old_path = self.get_path(i);
+        let in_use = is_in_use(&old_path);
+        let entry = &mut self.entries[i];
+
+        let old_name = pop_dir_slash(entry.name()).to_string();
+
+        if [Rename, Delete].contains(&action) && in_use {
+            confirm!("Not possible!\nAt least one of your tabs relies on this path.");
+            return Ok(());
+        }
+
+        match action {
+            Rename => {
+                let Some(new_name) = prompt!("New name for {old_name:?}:") else {
+                    return Ok(());
+                };
+
+                let mut new_path = old_path.clone();
+                replace_last(&mut new_path, &old_name, &new_name);
+                fs::rename(old_path, new_path)?;
+                replace_last(&mut entry.name_or_path, &old_name, &new_name);
+            },
+            Delete => self.delete(i)?,
+            NewDir => {
+                let Some(mut dir_name) = prompt!("Name of new directory in {old_name:?}:") else {
+                    return Ok(());
+                };
+
+                dir_name.push('/');
+                old_path += &dir_name;
+                fs::create_dir(old_path)?;
+                self.insert_entry(i, dir_name);
+            },
+            NewFile => {
+                let Some(file_name) = prompt!("Name of new file in {old_name:?}:") else {
+                    return Ok(());
+                };
+ 
+                old_path += &file_name;
+                fs::write(old_path, "")?;
+                self.insert_entry(i, file_name);
+            },
+            other => _ = confirm!("Bad Code Path ({other:?})"),
+        }
+
+        Ok(())
+    }
+
+    fn insert_entry(&mut self, mut i: usize, name: String) {
+        use cmp::Ordering::{Less, Equal};
+        let parent = &self.entries[i];
+        let inc_depth = parent.depth + 1;
+        let entry = Entry {
+            name_or_path: name,
+            depth: inc_depth,
+        };
+
+        loop {
+            let next = i + 1;
+            let Some(neighbor) = self.entries.get(next) else {
+                break;
+            };
+
+            match neighbor.depth.cmp(&inc_depth) {
+                Less => break,
+                Equal if neighbor >= &entry => break,
+                _other => i = next,
+            }
+        }
+
+        self.entries.insert(i, entry);
+    }
+
+    fn delete(&mut self, i: usize) -> io::Result<()> {
+        let old_path = self.get_path(i);
+        let entry = &self.entries[i];
+        let inc_depth = entry.depth + 1;
+        let mut keep_going = true;
+
+        if !confirm!("Really delete this?\n{old_path:?}") {
+            return Ok(());
+        }
+
+        match entry.is_dir() {
+            true => fs::remove_dir_all(old_path)?,
+            false => fs::remove_file(old_path)?,
+        }
+
+        while keep_going {
+            self.entries.remove(i);
+
+            match self.entries.get(i) {
+                None => keep_going = false,
+                Some(entry) => keep_going = entry.depth >= inc_depth,
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn enter_dir(&mut self, i: &mut usize) {
         if !self.entries[*i].is_dir() {
             return;
@@ -287,4 +427,13 @@ impl Ord for Entry {
             _ => self.name().cmp(other.name()),
         }
     }
+}
+
+fn replace_last(dst: &mut String, from: &str, to: &str) {
+    let start = dst
+        .rfind(from)
+        .expect("replace_last: no occurence!");
+
+    let stop = start + from.len();
+    dst.replace_range(start..stop, to);
 }

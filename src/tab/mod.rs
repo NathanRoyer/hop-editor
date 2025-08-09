@@ -16,7 +16,7 @@ mod deletion;
 mod movement;
 mod history;
 
-const CLOSE_WARNING: &str = "[UNSAVED FILE]\nThis file has unsaved edits!\n- Press Enter to discard the edits.\n- Press Escape to cancel.";
+const CLOSE_WARNING: &str = "[UNSAVED FILE]\nReally close This file? It has unsaved edits!";
 
 pub type TabList = Vec<(bool, Arc<str>)>;
 
@@ -368,6 +368,18 @@ impl TabMap {
 
     pub fn all_saved(&self) -> bool {
         self.inner.iter().all(|t| !t.modified)
+    }
+
+    pub fn is_in_use(&self, prefix: &str) -> bool {
+        for tab in &self.inner {
+            if let Some(path) = tab.path() {
+                if path.starts_with(prefix) {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 }
 
