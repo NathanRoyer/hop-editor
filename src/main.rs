@@ -26,6 +26,8 @@ const DEFAULT_SYNTAX: &str = include_str!("../assets/syntax.toml");
 const FOR_CURSORS: bool = true;
 const MAX_CURSORS: u16 = 10;
 
+// ⚠
+
 fn panic_handler(info: &panic::PanicHookInfo) {
     let bt = backtrace::Backtrace::capture();
     confirm!("panic occurred: {info}\n{bt:#?}");

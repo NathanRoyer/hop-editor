@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crossterm::{*, terminal::*, event::*, cursor::*, style::*};
 use std::io::{stdout, Stdout, Write as _};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -251,12 +249,12 @@ impl Interface {
 
         for (i, (modified, tab_name)) in items.iter().enumerate() {
             queue!(self.stdout, MoveTo(tabs + cursor, 1)).unwrap();
-            let len = tab_name.len() + 2;
+            let cells = tab_name.chars().count() + 4;
             let mut hovered = false;
 
             if let Some(pos) = hover_pos {
                 hovered = match pos.checked_sub(cursor) {
-                    Some(rem) => (rem as usize) < len,
+                    Some(rem) => (rem as usize) < cells,
                     None => false,
                 };
             }
@@ -284,40 +282,32 @@ impl Interface {
             let bg_reset = SetBackgroundColor(default_bg_color());
             let no_line = Attribute::NoUnderline;
 
-            let _ = write!(self.stdout, " {fg_color}{bg_color}");
+            let _ = write!(self.stdout, "  {fg_color}{bg_color}");
             let _ = write!(self.stdout, "{underline}{tab_name}{no_line}");
-            let _ = write!(self.stdout, "{fg_reset}{bg_reset} │");
+            let _ = write!(self.stdout, "{fg_reset}{bg_reset}  │");
 
             queue!(self.stdout, MoveTo(tabs + cursor, 0)).unwrap();
-            let _ = write!(self.stdout, "{:─^1$}┬", "", len);
+            let _ = write!(self.stdout, "{:─^1$}┬", "", cells);
 
             queue!(self.stdout, MoveTo(tabs + cursor, 2)).unwrap();
-            let _ = write!(self.stdout, "{:─^1$}┴", "", len);
+            let _ = write!(self.stdout, "{:─^1$}┴", "", cells);
 
-            cursor += 1 + (len as u16);
+            cursor += 1 + (cells as u16);
         }
 
         self.erase_tab_list(cursor);
         let _ = self.stdout.flush();
     }
 
-    pub fn set_toolbar(&self, _items: &[&str]) {
-        todo!()
-    }
-
-    pub fn set_status(&self, _status: &str) {
-        todo!()
-    }
-
     pub fn find_tab(&self, x: u16, items: &TabList) -> Option<usize> {
         let mut x = x as usize;
 
         for (i, (_mod, name)) in items.iter().enumerate() {
-            let len = name.len() + 3;
+            let cells = name.chars().count() + 5;
 
-            match x < len {
+            match x < cells {
                 true => return Some(i),
-                false => x -= len,
+                false => x -= cells,
             }
         }
 
