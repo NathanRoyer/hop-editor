@@ -18,7 +18,7 @@ static DIRTY: AtomicBool = AtomicBool::new(true);
 pub enum UserInput {
     Quit(bool),
     Save,
-    CloseTab,
+    CloseTab(Option<u16>),
     NextTab(bool),
     Insert(char),
     CodeSeek(u16, u16, bool),
@@ -362,7 +362,7 @@ impl Interface {
                         KeyCode::Left => UserInput::HorizontalJump(-10, shift),
                         KeyCode::Char('d') => UserInput::AutoSelect,
                         KeyCode::Char('a') => UserInput::SelectAll,
-                        KeyCode::Char('w') => UserInput::CloseTab,
+                        KeyCode::Char('w') => UserInput::CloseTab(None),
                         KeyCode::Char('o') => UserInput::Reveal,
                         KeyCode::Char('q') => UserInput::Quit(true),
                         KeyCode::Char('s') => UserInput::Save,
@@ -437,6 +437,7 @@ impl Interface {
                     Location::Tab(x) => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Down(Left) => UserInput::TabClick(x),
+                        Down(Middle) => UserInput::CloseTab(Some(x)),
                         Moved => UserInput::TabHover(x),
                         Drag(Left) => UserInput::NoOp,
                         _ => mouse_fallback(),

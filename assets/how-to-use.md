@@ -65,6 +65,7 @@ before quitting.
 | Shift + Page Down    | Switch to previous tab               |
 | Shift + Page Up      | Switch to next tab                   |
 | Ctrl + W             | Close Tab                            |
+| Middle Click         | Close Tab                            |
 
 ## File Tree Mode
 

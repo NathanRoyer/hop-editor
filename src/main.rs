@@ -379,10 +379,17 @@ impl Application {
                 tab.swap_latest_cursor(y as usize);
                 self.ensure_cursor_visible();
             },
-            UserInput::CloseTab => {
+            UserInput::CloseTab(None) => {
                 self.tabs.close(None);
                 self.update_left(FOR_CURSORS);
                 self.update_tab_list(true);
+            },
+            UserInput::CloseTab(Some(x)) => {
+                if let Some(index) = self.interface.find_tab(x, &self.list) {
+                    self.tabs.close(Some(index));
+                    self.update_left(FOR_CURSORS);
+                    self.update_tab_list(true);
+                }
             },
             UserInput::NextTab(leftward) => {
                 self.tabs.next_tab(leftward);
