@@ -16,7 +16,6 @@ mod tree;
 mod tab;
 
 const CONFIRM_QUIT: &str = "[UNSAVED FILES]\nReally Quit? Some files have unsaved edits!";
-const FIND_PROMPT: &str = "Please input the text to look for.";
 
 const DEFAULT_CONFIG: &str = include_str!("../assets/config.toml");
 const DEFAULT_SYNTAX: &str = include_str!("../assets/syntax.toml");
@@ -282,10 +281,8 @@ impl Application {
                 self.update_left(FOR_CURSORS);
             },
             UserInput::Find => {
-                if let Some(text) = prompt!("{}", FIND_PROMPT) {
-                    tab.find_all(&text);
-                    self.update_left(FOR_CURSORS);
-                }
+                tab.find_all();
+                self.update_left(FOR_CURSORS);
             },
             UserInput::SeekLineStart(s) => {
                 tab.line_seek(true, s);

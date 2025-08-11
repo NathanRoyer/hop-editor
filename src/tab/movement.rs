@@ -328,13 +328,31 @@ impl Tab {
         None
     }
 
-    pub fn find_all(&mut self, text: &str) {
+    pub fn find_all(&mut self) {
+        let c = self.latest_cursor();
+        let cursor = &self.cursors[c];
+
+        let maybe_text = if cursor.selects() {
+            let mut dst = String::new();
+            self.extract_selection(c, &mut dst);
+            Some(dst)
+        } else {
+            prompt!("Please input the text to look for:")
+        };
+
+        let Some(text) = maybe_text else {
+            return;
+        };
+
         let num_chars = text.chars().count() as isize;
         let mut cursor = Cursor::new(0);
-        self.cursors.clear();
         let mut c = 0;
 
-        while let Some((x, y)) = self.find(text, cursor.x, cursor.y) {
+        while let Some((x, y)) = self.find(&text, cursor.x, cursor.y) {
+            if c == 0 {
+                self.cursors.clear();
+            }
+
             cursor = Cursor::new(c);
             cursor.x = x;
             cursor.y = y;
@@ -342,6 +360,10 @@ impl Tab {
             self.hor_jump_cursor(c, num_chars, true);
             cursor = *self.cursors.last().unwrap();
             c += 1;
+        }
+
+        if c == 0 {
+            alert!("No match in current tab.");
         }
 
         self.check_cursors();
