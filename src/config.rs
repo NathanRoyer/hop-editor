@@ -27,6 +27,7 @@ struct General {
     internal_clipboard: bool,
     hover: HexColor,
     tree_width: u16,
+    max_cursor_lines: u16,
 }
 
 fn read_toml<'a>(
@@ -85,6 +86,10 @@ pub fn init() {
 
 pub fn tree_width() -> u16 {
     config().general.tree_width
+}
+
+pub fn max_cursor_lines() -> u16 {
+    config().general.max_cursor_lines
 }
 
 pub fn syntax_file() -> SyntaxFile {

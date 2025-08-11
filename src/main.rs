@@ -24,7 +24,6 @@ const DEFAULT_SYNTAX: &str = include_str!("../assets/syntax.toml");
 // we're only doing it to refresh the cursor list.
 // in the future, this could be optimized easily.
 const FOR_CURSORS: bool = true;
-const MAX_CURSORS: u16 = 10;
 
 // ⚠
 
@@ -107,10 +106,11 @@ impl Application {
         }
 
         let tab = self.tabs.current();
+        let max_cursors = config::max_cursor_lines();
 
         let height = self.interface.tree_height();
         self.num_cursors = tab.cursor_count() as u16;
-        let cursor_lines = self.num_cursors.min(MAX_CURSORS);
+        let cursor_lines = self.num_cursors.min(max_cursors);
         let tree_lines = height.saturating_sub(cursor_lines + 1);
         self.tree.check_overscroll();
 
@@ -132,10 +132,10 @@ impl Application {
             self.interface.set_tree_row(false, hovered, y, &self.str_buf);
         }
 
-        if self.num_cursors > MAX_CURSORS {
+        if self.num_cursors > max_cursors {
             self.str_buf.clear();
             let y = height.saturating_sub(1);
-            let missing = self.num_cursors - MAX_CURSORS;
+            let missing = self.num_cursors - max_cursors;
             let _ = write!(self.str_buf, "<{missing} other cursors>");
             self.interface.set_tree_row(false, false, y, &self.str_buf);
         }
@@ -477,9 +477,9 @@ impl Application {
 
             self.update_code();
 
-            let event = self
-                .interface
-                .read_event(self.num_cursors);
+            let max_cursors = config::max_cursor_lines();
+            let cursor_lines = self.num_cursors.min(max_cursors);
+            let event = self.interface.read_event(cursor_lines);
 
             self.handle_event(event);
         }
