@@ -1,8 +1,8 @@
 use serde::Deserialize;
 use litemap::LiteMap;
-use crate::confirm;
 use std::sync::Arc;
 use std::mem::take;
+use crate::alert;
 use RangeMode::*;
 
 /* CONFIG STRUCT */
@@ -73,7 +73,7 @@ impl SyntaxFile {
         match toml::from_str(config_str) {
             Ok(config) => Ok(config),
             Err(error) => {
-                confirm!("failed to parse syntax file: {:?}", error.message());
+                alert!("failed to parse syntax file: {:?}", error.message());
                 Err("failed to parse syntax file")
             }
         }
@@ -181,7 +181,7 @@ impl RangeMode {
             "clower" => Call(Casing::Lower),
             "cupper" => Call(Casing::Upper),
             other => {
-                confirm!("invalid token type: {other:?}");
+                alert!("invalid token type: {other:?}");
                 Comment
             },
         }

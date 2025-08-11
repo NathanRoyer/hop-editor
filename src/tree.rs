@@ -2,8 +2,8 @@ use std::{io, fs, cmp};
 use std::fmt::Write;
 
 use crate::interface::menu::{MenuItem, context_menu};
+use crate::{alert, confirm, prompt};
 use crate::config::hide_folder;
-use crate::{confirm, prompt};
 
 // syms: ▷▽▶▼;
 
@@ -118,7 +118,7 @@ impl FileTree {
             let i = self.entries.len();
 
             if let Err(error) = read_dir(dir_path, &mut self.entries, inc_depth) {
-                confirm!("failed to read directory: {error:?}");
+                alert!("failed to read directory: {error:?}");
                 self.entries.truncate(i);
             };
 
@@ -227,7 +227,7 @@ impl FileTree {
 
         if let Some(action) = context_menu(x, y, options) {
             if let Err(error) = self.affect(i, action, is_in_use) {
-                confirm!("Failed: {error:?}");
+                alert!("Failed: {error:?}");
             }
         }
     }
@@ -247,7 +247,7 @@ impl FileTree {
         let old_name = pop_dir_slash(entry.name()).to_string();
 
         if [Rename, Delete].contains(&action) && in_use {
-            confirm!("Not possible!\nAt least one of your tabs relies on this path.");
+            alert!("Not possible!\nAt least one of your tabs relies on this path.");
             return Ok(());
         }
 
@@ -282,7 +282,7 @@ impl FileTree {
                 fs::write(old_path, "")?;
                 self.insert_entry(i, file_name);
             },
-            other => _ = confirm!("Bad Code Path ({other:?})"),
+            other => _ = alert!("Bad Code Path ({other:?})"),
         }
 
         Ok(())

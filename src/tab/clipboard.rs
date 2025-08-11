@@ -24,7 +24,7 @@ impl Tab {
         }
 
         if let Err(error) = fs::write(TMP_PATH, text) {
-            confirm!("failed to write clipboard-file ({TMP_PATH}):\n{error:?}");
+            alert!("failed to write clipboard-file ({TMP_PATH}):\n{error:?}");
             return;
         }
 
@@ -43,7 +43,7 @@ impl Tab {
             try_exec(false);
 
             let Ok(contents) = fs::read_to_string(TMP_PATH) else {
-                confirm!("failed to read clipboard-file ({TMP_PATH})");
+                alert!("failed to read clipboard-file ({TMP_PATH})");
                 return;
             };
 
@@ -56,7 +56,7 @@ impl Tab {
             let regions = text.split(DELIMITER).count();
 
             if regions != cursors {
-                confirm!("cannot paste: {regions} clipboard regions but {cursors} cursors");
+                alert!("cannot paste: {regions} clipboard regions but {cursors} cursors");
                 return;
             }
 
@@ -84,7 +84,7 @@ fn try_exec(copy: bool) {
     };
 
     let Ok(file) = maybe_file else {
-        confirm!("failed to open clipboard-file ({TMP_PATH})");
+        alert!("failed to open clipboard-file ({TMP_PATH})");
         return;
     };
 
@@ -120,6 +120,6 @@ fn try_exec(copy: bool) {
         let ln1 = "failed to use wl-clipboard, xclip or macOS equivalents.";
         let ln2 = "please make sure at least one of these works.";
         let ln3 = "alternatively, set `internal-clipboard` to `true` in config.";
-        confirm!("{ln1}\n{ln2}\n{ln3}");
+        alert!("{ln1}\n{ln2}\n{ln3}");
     }
 }

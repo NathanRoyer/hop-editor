@@ -45,6 +45,29 @@ pub fn _confirm(mut text: String) -> bool {
 }
 
 #[macro_export]
+macro_rules! alert {
+    ($entry:expr $(, $arg:expr)* $(,)?) => {
+        $crate::interface::popup::_alert(format!($entry, $($arg),*))
+    }
+}
+
+pub fn _alert(mut text: String) -> bool {
+    text += "\n\n- Press Enter or Escape to acknowledge.";
+    popup(text);
+
+    loop {
+        match read().unwrap() {
+            Event::Key(e) if !e.is_release() => match e.code {
+                KeyCode::Enter => break true,
+                KeyCode::Esc => break false,
+                _other => (),
+            },
+            _other => (),
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! prompt {
     ($entry:expr $(, $arg:expr)* $(,)?) => {
         $crate::interface::popup::_prompt(format!($entry, $($arg),*))

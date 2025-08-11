@@ -31,7 +31,7 @@ const MAX_CURSORS: u16 = 10;
 
 fn panic_handler(info: &panic::PanicHookInfo) {
     let bt = backtrace::Backtrace::capture();
-    confirm!("panic occurred: {info}\n{bt:#?}");
+    alert!("panic occurred: {info}\n{bt:#?}");
     restore_term();
 }
 
@@ -183,7 +183,7 @@ impl Application {
             if matches!(c, '\n' | ' ') {
                 if let Some(path) = self.tree.toggle_or_open(i) {
                     if let Err(err) = self.tabs.open(&self.syntaxes, path) {
-                        confirm!("failed to open: {err:?}");
+                        alert!("failed to open: {err:?}");
                     }
                 }
 
@@ -302,7 +302,7 @@ impl Application {
                 self.ensure_cursor_visible();
                 self.update_left(FOR_CURSORS);
             },
-            other => _ = confirm!("BUG: bad code path for {other:?}"),
+            other => _ = alert!("BUG: bad code path for {other:?}"),
         }
     }
 
@@ -380,7 +380,7 @@ impl Application {
             UserInput::TreeClick(y) => {
                 if let Some(path) = self.tree.click(y) {
                     if let Err(err) = self.tabs.open(&self.syntaxes, path) {
-                        confirm!("failed to open: {err:?}");
+                        alert!("failed to open: {err:?}");
                     }
                 }
 

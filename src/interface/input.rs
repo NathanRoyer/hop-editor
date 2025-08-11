@@ -91,7 +91,7 @@ impl Interface {
         let event = read().unwrap();
 
         let fallback = || {
-            crate::confirm!("unassigned action:\n- event: {event:?}\n");
+            crate::alert!("unassigned action:\n- event: {event:?}\n");
             UserInput::NoOp
         };
 
@@ -150,7 +150,7 @@ impl Interface {
                 let context_menu = UserInput::ContextMenu(pos, e.column, e.row);
 
                 let mouse_fallback = || {
-                    // crate::confirm!("unassigned action:\n- event: {e:?}\n- pos: {pos:?}");
+                    // crate::alert!("unassigned action:\n- event: {e:?}\n- pos: {pos:?}");
                     UserInput::NoOp
                 };
 

@@ -4,8 +4,8 @@ use std::sync::OnceLock;
 use hex_color::HexColor;
 use serde::Deserialize;
 use litemap::LiteMap;
-use crate::confirm;
 use std::{fs, env};
+use crate::alert;
 
 type Rgb = (u8, u8, u8);
 
@@ -61,7 +61,7 @@ fn load() -> Config {
     match toml::from_str(&config_str) {
         Ok(theme) => theme,
         Err(error) => {
-            confirm!("failed to parse config: {:#?}", error.message());
+            alert!("failed to parse config: {:#?}", error.message());
             let failure = "failed to parse fallback config file";
             toml::from_str(crate::DEFAULT_CONFIG).expect(failure)
         },
