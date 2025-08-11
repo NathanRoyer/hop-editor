@@ -1,4 +1,20 @@
+use std::str::from_utf8;
+use std::io::Write;
 use super::*;
+
+fn strip_cr<'a>(text: &'a str, eol_cr: &mut bool) -> &'a str {
+    let (text, cr) = match text.strip_suffix('\r') {
+        Some(text) => (text, true),
+        None => (text, false),
+    };
+
+    *eol_cr = cr;
+    text
+}
+
+fn indent_len(line: &str) -> usize {
+    line.len() - line.trim_start().len()
+}
 
 impl Tab {
     fn add_to_cursors(&mut self, first_c: usize, lf: bool, num_x: usize) {
@@ -94,5 +110,26 @@ impl Tab {
         let mut buf = [0u8; 4];
         let text = c.encode_utf8(&mut buf);
         self.insert_text(text);
+    }
+
+    pub fn smart_carriage_return(&mut self) {
+        const CAP: usize = 64;
+
+        let c = self.latest_cursor();
+        let index = self.cursors[c].y;
+        let line = &self.lines[index];
+
+        let crlf_i = line.eol_cr as usize;
+        let crlf = ["\n", "\r\n"][crlf_i];
+
+        let indent_len = indent_len(&line.buffer);
+        let indent = &line.buffer[..indent_len];
+
+        let mut buf = [b'-'; CAP];
+        let _ = write!(buf.as_mut_slice(), "{crlf}{indent}");
+        let text = from_utf8(&buf).unwrap();
+        let len = text.find('-').unwrap_or(CAP);
+
+        self.insert_text(&text[..len]);
     }
 }

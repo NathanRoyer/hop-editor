@@ -370,7 +370,7 @@ impl Tab {
         self.h_scroll = 0;
     }
 
-    pub(super) fn extract_selection<T: AppendStr>(&mut self, c: usize, dst: &mut T) {
+    pub(super) fn extract_selection<T: AppendStr>(&self, c: usize, dst: &mut T) {
         let mut a = self.cursors[c];
         let mut b = a;
 
@@ -385,9 +385,10 @@ impl Tab {
                 false => 0,
             };
 
-            let (limit_x, addition) = match y == b.y {
-                true => (b.x, ""),
-                false => (line.len_chars(), "\n"),
+            let (limit_x, addition) = match (y == b.y, line.eol_cr) {
+                (true, _) => (b.x, ""),
+                (false, true) => (line.len_chars(), "\r\n"),
+                (false, false) => (line.len_chars(), "\n"),
             };
 
             let limit_len = line.len_until(limit_x);

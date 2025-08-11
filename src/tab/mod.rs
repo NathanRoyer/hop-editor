@@ -398,16 +398,6 @@ impl Ord for Cursor {
     }
 }
 
-fn strip_cr<'a>(text: &'a str, eol_cr: &mut bool) -> &'a str {
-    let (text, cr) = match text.strip_suffix('\r') {
-        Some(text) => (text, true),
-        None => (text, false),
-    };
-
-    *eol_cr = cr;
-    text
-}
-
 fn file_name(path: &Option<String>) -> Arc<str> {
     let name = match path {
         Some(path) => match path.rsplit_once('/') {

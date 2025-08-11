@@ -177,26 +177,41 @@ impl Application {
         tab.ensure_cursor_visible(w, h);
     }
 
-    fn insert(&mut self, c: char) {
-        if let Some(i) = self.tree_select {
-            if matches!(c, '\n' | ' ') {
-                if let Some(path) = self.tree.toggle_or_open(i) {
-                    if let Err(err) = self.tabs.open(&self.syntaxes, path) {
-                        alert!("failed to open: {err:?}");
-                    }
-                }
-
-                self.update_left(true);
-                self.update_tab_list(true);
+    fn tree_toggle(&mut self, i: usize) {
+        if let Some(path) = self.tree.toggle_or_open(i) {
+            if let Err(err) = self.tabs.open(&self.syntaxes, path) {
+                alert!("failed to open: {err:?}");
             }
-        } else {
-            let tab = self.tabs.current();
-            let no_mod = !tab.modified();
-            tab.insert_char(c);
-            self.ensure_cursor_visible();
-            self.update_tab_list(no_mod);
-            self.update_left(FOR_CURSORS);
         }
+
+        self.update_left(true);
+        self.update_tab_list(true);
+    }
+
+    fn carriage_return(&mut self) {
+        if let Some(i) = self.tree_select {
+            return self.tree_toggle(i);
+        }
+
+        let tab = self.tabs.current();
+        let no_mod = !tab.modified();
+        tab.smart_carriage_return();
+        self.ensure_cursor_visible();
+        self.update_tab_list(no_mod);
+        self.update_left(FOR_CURSORS);
+    }
+
+    fn insert(&mut self, c: char) {
+        if let (' ', Some(i)) = (c, self.tree_select) {
+            return self.tree_toggle(i);
+        }
+
+        let tab = self.tabs.current();
+        let no_mod = !tab.modified();
+        tab.insert_char(c);
+        self.ensure_cursor_visible();
+        self.update_tab_list(no_mod);
+        self.update_left(FOR_CURSORS);
     }
 
     fn horizontal_jump(&mut self, delta: isize, shift: bool) {
@@ -238,12 +253,6 @@ impl Application {
         let no_mod = !tab.modified();
 
         match event {
-            UserInput::Insert(c) => {
-                tab.insert_char(c);
-                self.ensure_cursor_visible();
-                self.update_tab_list(no_mod);
-                self.update_left(FOR_CURSORS);
-            },
             UserInput::Paste => {
                 tab.paste();
                 self.ensure_cursor_visible();
@@ -441,6 +450,7 @@ impl Application {
                 self.tree_select = Some(index);
                 self.update_left(true);
             },
+            UserInput::CarriageReturn => self.carriage_return(),
             UserInput::HorizontalJump(d, s) => self.horizontal_jump(d, s),
             UserInput::VerticalJump(d, s) => self.vertical_jump(d, s),
             UserInput::Resize(w, h) => self.interface.resize(w, h),
