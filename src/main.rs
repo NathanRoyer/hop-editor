@@ -40,7 +40,9 @@ pub struct Application {
     fallback_panel_width: u16,
     tree_hover: Option<u16>,
     tab_hover: Option<u16>,
-    num_cursors: u16,
+    cursor_list_scroll: u16,
+    shown_cursors: u16,
+    max_cursor_scroll: u16,
     str_buf: String,
     list: TabList,
     stop: bool,
@@ -109,10 +111,16 @@ impl Application {
         let max_cursors = config::max_cursor_lines();
 
         let height = self.interface.tree_height();
-        self.num_cursors = tab.cursor_count() as u16;
-        let cursor_lines = self.num_cursors.min(max_cursors);
+        let num_cursors = tab.cursor_count() as u16;
+        let cursor_lines = num_cursors.min(max_cursors);
         let tree_lines = height.saturating_sub(cursor_lines + 1);
         self.tree.check_overscroll();
+
+        if self.shown_cursors != cursor_lines {
+            self.shown_cursors = cursor_lines;
+            self.max_cursor_scroll = num_cursors.saturating_sub(max_cursors);
+            self.cursor_list_scroll = 0;
+        }
 
         for i in 0..tree_lines {
             self.str_buf.clear();
@@ -122,22 +130,17 @@ impl Application {
             self.interface.set_tree_row(selected, hovered, i, &self.str_buf);
         }
 
-        self.interface.write_cursor_header(tree_lines + 1);
+        self.str_buf.clear();
+        let _ = write!(self.str_buf, " Cursors: {num_cursors} ");
+        self.interface.write_header(tree_lines + 1, &self.str_buf);
 
         for i in 0..cursor_lines {
             self.str_buf.clear();
             let y = tree_lines + i + 1;
-            tab.cursor_desc(i as usize, &mut self.str_buf);
+            let c = (i + self.cursor_list_scroll) as usize;
+            tab.cursor_desc(c, &mut self.str_buf);
             let hovered = self.cursor_hover == Some(i);
             self.interface.set_tree_row(false, hovered, y, &self.str_buf);
-        }
-
-        if self.num_cursors > max_cursors {
-            self.str_buf.clear();
-            let y = height.saturating_sub(1);
-            let missing = self.num_cursors - max_cursors;
-            let _ = write!(self.str_buf, "<{missing} other cursors>");
-            self.interface.set_tree_row(false, false, y, &self.str_buf);
         }
     }
 
@@ -162,11 +165,21 @@ impl Application {
     }
 
     fn scroll(&mut self, delta: isize) {
-        if self.tree_hover.is_none() && self.tree_select.is_none() {
-            self.tabs.current().scroll(delta);
-        } else {
+        if self.tree_hover.is_some() || self.tree_select.is_some() {
             self.tree.scroll(delta);
             self.update_left(true);
+        } else if self.cursor_hover.is_some() {
+            let n = &mut self.cursor_list_scroll;
+
+            match n.checked_add_signed(delta as i16) {
+                None => *n = 0,
+                Some(s) if s <= self.max_cursor_scroll => *n = s,
+                Some(_) => *n = self.max_cursor_scroll,
+            };
+
+            self.update_left(true);
+        } else {
+            self.tabs.current().scroll(delta);
         }
     }
 
@@ -395,6 +408,7 @@ impl Application {
                 self.update_left(true);
             },
             UserInput::CursorClick(y) => {
+                let y = self.cursor_list_scroll + y;
                 tab.swap_latest_cursor(y as usize);
                 self.ensure_cursor_visible();
             },
@@ -477,9 +491,9 @@ impl Application {
 
             self.update_code();
 
-            let max_cursors = config::max_cursor_lines();
-            let cursor_lines = self.num_cursors.min(max_cursors);
-            let event = self.interface.read_event(cursor_lines);
+            let event = self
+                .interface
+                .read_event(self.shown_cursors);
 
             self.handle_event(event);
         }
@@ -500,13 +514,15 @@ fn main() -> Result<(), &'static str> {
         cursor_buf: Vec::new(),
         fallback_panel_width,
         list: TabList::new(),
+        cursor_list_scroll: 0,
+        max_cursor_scroll: 0,
         part_buf: Vec::new(),
         sel_buf: Vec::new(),
         cursor_hover: None,
         tree_select: None,
         tree_hover: None,
         tab_hover: None,
-        num_cursors: 0,
+        shown_cursors: 0,
         stop: false,
 
         // singletons

@@ -178,6 +178,8 @@ impl Interface {
                     Location::Cursors(y) => match e.kind {
                         Up(_) => UserInput::NoOp,
                         Down(Left) => UserInput::CursorClick(y),
+                        ScrollDown => UserInput::Scroll(1),
+                        ScrollUp => UserInput::Scroll(-1),
                         Moved => UserInput::CursorHover(y),
                         Drag(Left) => UserInput::NoOp,
                         _ => mouse_fallback(),

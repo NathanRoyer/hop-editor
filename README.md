@@ -26,7 +26,7 @@ Please go to the 'releases' section of this git repository.
 1. Install Rust: https://www.rust-lang.org/tools/install
 2. Run `cargo install hop-editor`
 
-### Option B: Build from sources
+### Option C: Build from sources
 
 1. Install Rust: https://www.rust-lang.org/tools/install
 2. Clone this repository
@@ -74,3 +74,10 @@ There you will also find a default syntax file.
 - `background`: hexadecimal color code for the background
 - `syntax`: map of syntax token types to hexadecimal color codes
 - `hover`: hexadecimal color code for hovering color (tree & tabs)
+
+
+## Contributing
+
+I openly accept PRs for syntax highlighting changes.
+
+For everything else, please file an issue first.

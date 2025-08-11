@@ -150,7 +150,7 @@ impl Interface {
         let _ = self.stdout.flush();
     }
 
-    fn write_header(&mut self, y: u16, mut text: &str) {
+    pub fn write_header(&mut self, y: u16, mut text: &str) {
         queue!(self.stdout, SetForegroundColor(Color::Reset)).unwrap();
         queue!(self.stdout, MoveTo(0, MENU_HEIGHT + y)).unwrap();
         let width = self.panel_width as usize;
@@ -160,10 +160,6 @@ impl Interface {
         }
 
         let _ = write!(self.stdout, "{:─^1$}┤", text, width);
-    }
-
-    pub fn write_cursor_header(&mut self, y: u16) {
-        self.write_header(y, " Cursors ");
     }
 
     pub fn set_code_row(&mut self, index: u16, line_no: Option<usize>, mut text: ColoredText) {
