@@ -9,7 +9,7 @@ impl Tab {
         let mut ctx = None;
 
         for line in self.lines.iter_mut() {
-            if line.dirty {
+            if take(&mut line.must_highlight) {
                 line.eol_ctx = syntax.highlight(ctx, &mut line.ranges, &line.buffer);
             }
 
@@ -41,7 +41,7 @@ impl Tab {
     pub fn prepare_draw(&mut self, y: u16) -> Option<(usize, bool)> {
         let i = self.line_index(y)?;
         let line = self.lines.get_mut(i)?;
-        Some((i, take(&mut line.dirty)))
+        Some((i, take(&mut line.must_draw)))
     }
 
     pub fn line_data<'a>(
@@ -123,7 +123,7 @@ impl Tab {
 
     pub fn scroll(&mut self, delta: isize) {
         self.v_scroll = self.v_scroll.checked_add_signed(delta).unwrap_or(0);
-        self.set_fully_dirty();
+        self.set_lines_redraw();
     }
 
     pub fn ensure_cursor_visible(&mut self, width: usize, height: usize) {
@@ -152,8 +152,7 @@ impl Tab {
         }
 
         if invisible_x | invisible_y {
-            // maybe todo do better for _x
-            self.set_fully_dirty();
+            self.set_lines_redraw();
         }
     }
 }

@@ -13,6 +13,7 @@ license = 'MIT'
 overflow-checks = true
 opt-level = "z"
 lto = true
+# debug = true
 
 [[bin]]
 name = "hop"

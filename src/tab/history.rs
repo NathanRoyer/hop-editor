@@ -83,7 +83,7 @@ impl Tab {
         self.history.len.take();
 
         let mut line = Line::default();
-        line.dirty = true;
+        line.set_dirty();
 
         self.lines.clear();
         self.lines.push(line);

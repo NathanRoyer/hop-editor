@@ -65,7 +65,7 @@ impl Tab {
         let new_i = line.len_until(cursor.x - num_chars);
 
         line.buffer.replace_range(new_i..old_i, "");
-        line.dirty = true;
+        line.set_dirty();
 
         self.check_line_highlighting(cursor.y);
         self.backspace_cursor(c, false, -(num_chars as isize));

@@ -83,12 +83,12 @@ impl Tab {
 
         for _ in 0..num_iter {
             let y = self.cursors[c].y;
-            self.lines[y].dirty = true;
+            self.lines[y].must_draw = true;
             callback(self, c, select);
         }
 
         let y = self.cursors[c].y;
-        self.lines[y].dirty = true;
+        self.lines[y].must_draw = true;
     }
 
     pub fn horizontal_jump(&mut self, delta: isize, select: bool) {
@@ -103,7 +103,7 @@ impl Tab {
 
     fn seek_in_line(&mut self, c: usize, y: usize, mut x: usize) {
         let cursor = &mut self.cursors[c];
-        self.lines[cursor.y].dirty = true;
+        self.lines[cursor.y].must_draw = true;
         let line = &self.lines[y];
         let mut progress = 0;
 
@@ -121,7 +121,7 @@ impl Tab {
 
         cursor.x = progress;
         cursor.y = y;
-        self.lines[y].dirty = true;
+        self.lines[y].must_draw = true;
     }
 
     pub fn seek(&mut self, x: u16, y: u16, append: bool) {
@@ -148,7 +148,7 @@ impl Tab {
 
         if !append {
             for cursor in &self.cursors {
-                self.lines[cursor.y].dirty = true;
+                self.lines[cursor.y].must_draw = true;
             }
 
             self.cursors.clear();
@@ -188,9 +188,7 @@ impl Tab {
         cursor.sel_y = (backup.y as isize) - (cursor.y as isize);
 
         self.check_cursors();
-
-        // todo: do better
-        self.set_fully_dirty();
+        self.set_lines_redraw();
     }
 
     fn unselect_if_not(&mut self, select: bool, jump_dir: Option<bool>) {
@@ -205,7 +203,7 @@ impl Tab {
 
             for (i, line) in self.lines.iter_mut().enumerate() {
                 if cursor.y == i || cursor.covers(i) || cursor.touches(i) {
-                    line.dirty = true;
+                    line.must_draw = true;
                 }
             }
 
@@ -276,7 +274,7 @@ impl Tab {
 
         cursor.sel_y = 0;
         cursor.sel_x = -(chars as isize);
-        line.dirty = true;
+        line.must_draw = true;
     }
 
     fn matches(&self, text: &str, x: usize, mut y: usize) -> bool {
@@ -459,7 +457,7 @@ impl Tab {
 
         self.cursors.clear();
         self.cursors.push(cursor);
-        self.set_fully_dirty();
+        self.set_lines_redraw();
     }
 }
 

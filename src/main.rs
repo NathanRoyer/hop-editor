@@ -350,7 +350,7 @@ impl Application {
         }
 
         self.fallback_panel_width = self.interface.get_panel_width();
-        self.tabs.current().set_fully_dirty();
+        self.tabs.current().set_lines_redraw();
     }
 
     fn handle_event(&mut self, event: UserInput) {
@@ -473,7 +473,7 @@ impl Application {
 
             if self.interface.must_refresh() {
                 self.interface.draw_decorations();
-                tab.set_fully_dirty();
+                tab.set_lines_redraw();
                 self.update_tab_list(true);
                 self.update_left(true);
             }

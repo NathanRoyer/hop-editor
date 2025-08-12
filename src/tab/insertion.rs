@@ -44,7 +44,7 @@ impl Tab {
         let line = &mut self.lines[cursor.y];
         let offset = line.len_until(cursor.x);
         line.buffer.insert_str(offset, text);
-        line.dirty = true;
+        line.set_dirty();
 
         self.check_line_highlighting(cursor.y);
         self.add_to_cursors(c, false, text.len());
@@ -63,7 +63,8 @@ impl Tab {
             buffer,
             ranges: vec![],
             eol_ctx: None,
-            dirty: true,
+            must_highlight: true,
+            must_draw: true,
             eol_cr,
         };
 

@@ -26,7 +26,8 @@ struct Line {
     ranges: Vec<Range>,
     eol_ctx: Option<LineContext>,
     eol_cr: bool,
-    dirty: bool,
+    must_highlight: bool,
+    must_draw: bool,
 }
 
 pub struct DirtyLine<'a> {
@@ -144,6 +145,11 @@ impl Line {
         let i = self.len_until(char_x);
         self.buffer[..i].chars().map(char_width).sum()
     }
+
+    fn set_dirty(&mut self) {
+        self.must_highlight = true;
+        self.must_draw = true;
+    }
 }
 
 impl Tab {
@@ -154,7 +160,7 @@ impl Tab {
     ) -> Self {
         let name = file_name(&file_path);
         let mut line = Line::default();
-        line.dirty = true;
+        line.must_draw = true;
 
         let tab_width_m1 = 3;
         let has_hard_tabs = text.contains('\t');
@@ -210,10 +216,20 @@ impl Tab {
         (y < self.lines.len()).then_some(y)
     }
 
+    pub fn set_lines_redraw(&mut self) {
+        for line in self.lines.iter_mut() {
+            line.must_draw = true;
+        }
+    }
+
     fn set_lines_dirty(&mut self, from_line: usize) {
         for line in self.lines.iter_mut().skip(from_line) {
-            line.dirty = true;
+            line.set_dirty();
         }
+    }
+
+    pub fn set_fully_dirty(&mut self) {
+        self.set_lines_dirty(0);
     }
 
     fn rebuild(&mut self) {
@@ -265,10 +281,6 @@ impl Tab {
         self.cursors[original].id = old_id;
     }
 
-    pub fn set_fully_dirty(&mut self) {
-        self.set_lines_dirty(0);
-    }
-
     pub fn save(&mut self) {
         self.rebuild();
 
@@ -306,18 +318,17 @@ impl Tab {
 
         for line in self.lines.iter_mut() {
             line.ranges.clear();
-            line.dirty = true;
+            line.set_dirty();
         }
     }
 
     pub fn switch_indent_mode(&mut self) {
-        let mut summary = String::from("Input an indent policy to apply.\n");
-        summary += "It must be formatted as such: '<s/h><width>'.\n";
-        summary += "'s4' would mean 'soft tabs, width of 4 cells'.\n";
-        summary += "'h2' would mean 'hard tabs, width of 2 cells'.\n";
-        summary += "'h' would mean 'hard tabs, don't change width'.\n";
+        let l1 = "Input an indent policy to apply.";
+        let l2 = "It must be formatted as such: '<s/h><width>'.";
+        let l3 = "'s4' would mean 'soft tabs, width of 4 cells'.";
+        let l4 = "'h2' would mean 'hard tabs, width of 2 cells'.";
 
-        let Some(mode) = prompt!("{summary}\n") else {
+        let Some(mode) = prompt!("{l1}\n{l2}\n{l3}\n{l4}\n\n") else {
             return;
         };
 
@@ -337,7 +348,7 @@ impl Tab {
             true => "\t".into(),
         };
 
-        self.set_fully_dirty();
+        self.set_lines_redraw();
     }
 }
 
@@ -416,7 +427,7 @@ impl TabMap {
             self.current -= 1;
         }
 
-        self.current().set_fully_dirty();
+        self.current().set_lines_redraw();
     }
 
     pub fn next_tab(&mut self, leftward: bool) {
@@ -429,12 +440,12 @@ impl TabMap {
         };
 
         self.current = next.unwrap_or(teleport);
-        self.current().set_fully_dirty();
+        self.current().set_lines_redraw();
     }
 
     pub fn switch(&mut self, index: usize) {
         self.current = index;
-        self.current().set_fully_dirty();
+        self.current().set_lines_redraw();
     }
 
     pub fn all_saved(&self) -> bool {
