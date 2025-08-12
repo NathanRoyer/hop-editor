@@ -5,6 +5,8 @@ use super::*;
 pub enum MenuItem {
     CloseTab,
     NewFile,
+    Syntax,
+    IndentMode,
     NewDir,
     Rename,
     Delete,
@@ -15,9 +17,11 @@ impl Deref for MenuItem {
 
     fn deref(&self) -> &Self::Target {
         match self {
+            Self::IndentMode => "Indent Mode",
             Self::CloseTab => "Close Tab",
             Self::NewFile => "New File",
             Self::NewDir => "New Dir.",
+            Self::Syntax => "Syntax",
             Self::Rename => "Rename",
             Self::Delete => "Delete",
         }

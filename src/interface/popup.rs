@@ -51,15 +51,15 @@ macro_rules! alert {
     }
 }
 
-pub fn _alert(mut text: String) -> bool {
+pub fn _alert(mut text: String) {
     text += "\n\n- Press Enter or Escape to acknowledge.";
     popup(text);
 
     loop {
         match read().unwrap() {
             Event::Key(e) if !e.is_release() => match e.code {
-                KeyCode::Enter => break true,
-                KeyCode::Esc => break false,
+                KeyCode::Enter => break,
+                KeyCode::Esc => break,
                 _other => (),
             },
             _other => (),

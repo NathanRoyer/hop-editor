@@ -257,72 +257,67 @@ impl Application {
         }
     }
 
+    fn tab_menu(&mut self, col: u16, x: u16, y: u16) {
+        use MenuItem::*;
+
+        let Some(index) = self.interface.find_tab(col, &self.list) else {
+            return;
+        };
+
+        let tab = self.tabs.get_mut(index);
+        let actions = [CloseTab, Syntax, IndentMode];
+        let close = UserInput::CloseTab(Some(col));
+
+        match context_menu(x, y, &actions) {
+            Some(CloseTab) => self.handle_event(close),
+            Some(Syntax) => tab.switch_syntax(&self.syntaxes),
+            Some(IndentMode) => tab.switch_indent_mode(),
+            _ => (),
+        }
+    }
+
     fn handle_tab_event(&mut self, event: UserInput) {
         if self.tree_select.is_some() {
             return;
         };
 
         let tab = self.tabs.current();
-        let no_mod = !tab.modified();
+        let mut ensure_cursor_visible = false;
+        let mut update_tab_list = !tab.modified();
+
+        // all of these should update tab list
+        match event {
+            UserInput::Paste => tab.paste(),
+            UserInput::Cut => tab.cut(),
+            UserInput::InsertTab => tab.insert_tab(),
+            UserInput::Backspace(forward) => tab.backspace_once(forward),
+            _ => update_tab_list = false,
+        }
+
+        // none of these should make cursor visible
+        match event {
+            UserInput::Copy => tab.copy(),
+            UserInput::SelectAll => tab.select_all(),
+            UserInput::Find => tab.find_all(),
+            _ => ensure_cursor_visible = true,
+        };
 
         match event {
-            UserInput::Paste => {
-                tab.paste();
-                self.ensure_cursor_visible();
-                self.update_left(FOR_CURSORS);
-            },
-            UserInput::Copy => tab.copy(),
-            UserInput::Cut => {
-                tab.cut();
-                self.ensure_cursor_visible();
-                self.update_left(FOR_CURSORS);
-            },
-            UserInput::Backspace(forward) => {
-                tab.backspace_once(forward);
-                self.ensure_cursor_visible();
-                self.update_tab_list(no_mod);
-                self.update_left(FOR_CURSORS);
-            },
-            UserInput::AutoSelect => {
-                tab.auto_select();
-                self.ensure_cursor_visible();
-                self.update_left(FOR_CURSORS);
-            },
-            UserInput::SelectAll => {
-                tab.select_all();
-                self.update_left(FOR_CURSORS);
-            },
-            UserInput::Undo => {
-                tab.undo();
-                self.ensure_cursor_visible();
-                self.update_left(FOR_CURSORS);
-            },
-            UserInput::Redo => {
-                tab.redo();
-                self.ensure_cursor_visible();
-                self.update_left(FOR_CURSORS);
-            },
-            UserInput::Find => {
-                tab.find_all();
-                self.update_left(FOR_CURSORS);
-            },
-            UserInput::SeekLineStart(s) => {
-                tab.line_seek(true, s);
-                self.ensure_cursor_visible();
-                self.update_left(FOR_CURSORS);
-            },
-            UserInput::SeekLineEnd(s) => {
-                tab.line_seek(false, s);
-                self.ensure_cursor_visible();
-                self.update_left(FOR_CURSORS);
-            },
-            UserInput::CodeDrag(x, y) => {
-                tab.drag_to(x, y);
-                self.ensure_cursor_visible();
-                self.update_left(FOR_CURSORS);
-            },
-            other => _ = alert!("BUG: bad code path for {other:?}"),
+            UserInput::Undo => tab.undo(),
+            UserInput::Redo => tab.redo(),
+            UserInput::AutoSelect => tab.auto_select(),
+            UserInput::SeekLineStart(s) => tab.line_seek(true, s),
+            UserInput::SeekLineEnd(s) => tab.line_seek(false, s),
+            UserInput::CodeDrag(x, y) => tab.drag_to(x, y),
+            _other => (),
         }
+
+        if ensure_cursor_visible {
+            self.ensure_cursor_visible();
+        }
+
+        self.update_tab_list(update_tab_list);
+        self.update_left(FOR_CURSORS);
     }
 
     fn resize_left_panel(&mut self, toggle: bool) {
@@ -374,13 +369,7 @@ impl Application {
                 self.tree.right_click(x, y, row, is_in_use);
                 self.update_left(true);
             },
-            UserInput::ContextMenu(Location::Tab(col), x, y) => {
-                if self.interface.find_tab(col, &self.list).is_some() {
-                    if context_menu(x, y, &[MenuItem::CloseTab]).is_some() {
-                        self.handle_event(UserInput::CloseTab(Some(col)));
-                    }
-                }
-            },
+            UserInput::ContextMenu(Location::Tab(col), x, y) => self.tab_menu(col, x, y),
             UserInput::CodeSeek(x, y, push_c) => {
                 tab.seek(x, y, push_c);
                 let _tree_select = self.tree_select.take();

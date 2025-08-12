@@ -47,6 +47,7 @@ pub struct Tab {
     modified: bool,
     syntax: Option<Arc<SyntaxConfig>>,
     tab_width_m1: usize,
+    tab_string: String,
     history: History,
 }
 
@@ -155,6 +156,9 @@ impl Tab {
         let mut line = Line::default();
         line.dirty = true;
 
+        let tab_width_m1 = 3;
+        let tab_string = " ".repeat(tab_width_m1 + 1);
+
         let mut this = Self {
             file_path,
             tmp_buf: String::new(),
@@ -165,7 +169,8 @@ impl Tab {
             internal_clipboard: String::new(),
             cursors: vec![Cursor::new(0)],
             modified: false,
-            tab_width_m1: 3,
+            tab_width_m1,
+            tab_string,
             syntax,
             history: History::new(),
         };
@@ -272,6 +277,64 @@ impl Tab {
             self.modified = false;
         }
     }
+
+    pub fn switch_syntax(&mut self, syntaxes: &SyntaxFile) {
+        let mut summary = String::from("Select a syntax to apply:\n- none\n");
+
+        for name in syntaxes.enumerate() {
+            write!(&mut summary, "- {name}\n").unwrap();
+        }
+
+        let Some(name) = prompt!("{summary}\n") else {
+            return;
+        };
+
+        if name == "none" {
+            self.syntax.take();
+        } else {
+            let Some(syntax) = syntaxes.get(&name) else {
+                alert!("No Such Syntax");
+                return;
+            };
+
+            self.syntax = Some(syntax);
+        }
+
+        for line in self.lines.iter_mut() {
+            line.ranges.clear();
+            line.dirty = true;
+        }
+    }
+
+    pub fn switch_indent_mode(&mut self) {
+        let mut summary = String::from("Input an indent policy to apply.\n");
+        summary += "It must be formatted as such: '<s/h><width>'.\n";
+        summary += "'s4' would mean 'soft tabs, width of 4 cells'.\n";
+        summary += "'h2' would mean 'hard tabs, width of 2 cells'.\n";
+        summary += "'h' would mean 'hard tabs, don't change width'.\n";
+
+        let Some(mode) = prompt!("{summary}\n") else {
+            return;
+        };
+
+        let hard_tabs = match mode.chars().next() {
+            Some('h') => true,
+            Some('s') => false,
+            _other => return alert!("Invalid Mode"),
+        };
+
+        let Ok(width @ 1..) = mode[1..].parse() else {
+            return alert!("Invalid Mode");
+        };
+
+        self.tab_width_m1 = width - 1;
+        self.tab_string = match hard_tabs {
+            false => " ".repeat(width),
+            true => "\t".into(),
+        };
+
+        self.set_fully_dirty();
+    }
 }
 
 impl TabMap {
@@ -294,6 +357,10 @@ impl TabMap {
 
     pub fn current(&mut self) -> &mut Tab {
         &mut self.inner[self.current]
+    }
+
+    pub fn get_mut(&mut self, index: usize) -> &mut Tab {
+        &mut self.inner[index]
     }
 
     pub fn open(&mut self, syntaxes: &SyntaxFile, file_path: String) -> Result<(), io::Error> {

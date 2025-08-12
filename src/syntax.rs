@@ -65,7 +65,7 @@ pub struct SyntaxConfig {
 #[derive(Deserialize, Debug, Default)]
 pub struct SyntaxFile {
     #[serde(flatten)]
-    pub inner: LiteMap<String, Arc<SyntaxConfig>>,
+    inner: LiteMap<String, Arc<SyntaxConfig>>,
 }
 
 impl SyntaxFile {
@@ -89,6 +89,10 @@ impl SyntaxFile {
             .iter()
             .find(|(_, s)| s.extension == extension)
             .map(|(n, _)| n.as_str())
+    }
+
+    pub fn enumerate(&self) -> impl Iterator<Item = &String> {
+        self.inner.keys()
     }
 }
 

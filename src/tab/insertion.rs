@@ -112,6 +112,12 @@ impl Tab {
         self.insert_text(text);
     }
 
+    pub fn insert_tab(&mut self) {
+        let tab_string = take(&mut self.tab_string);
+        self.insert_text(&tab_string);
+        self.tab_string = tab_string;
+    }
+
     pub fn smart_carriage_return(&mut self) {
         const CAP: usize = 64;
 

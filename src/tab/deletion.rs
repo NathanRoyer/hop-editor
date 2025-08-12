@@ -32,6 +32,8 @@ impl Tab {
     }
 
     fn backspace(&mut self, c: usize, mut num_chars: usize) {
+        let simple_backspace = num_chars == 1;
+
         while self.cursors[c].x < num_chars {
             let this_y = self.cursors[c].y;
 
@@ -42,11 +44,24 @@ impl Tab {
             num_chars -= 1;
         }
 
+        if num_chars == 0 {
+            return;
+        }
+
         // mutable copy! not mut ref
         let cursor = self.cursors[c];
         let line = &mut self.lines[cursor.y];
 
         let old_i = line.len_until(cursor.x);
+
+        // erase whole soft tab
+        let slice = &line.buffer[..old_i];
+        let is_tab = slice.ends_with(&self.tab_string);
+
+        if simple_backspace && is_tab {
+            num_chars = self.tab_string.chars().count();
+        }
+
         let new_i = line.len_until(cursor.x - num_chars);
 
         line.buffer.replace_range(new_i..old_i, "");

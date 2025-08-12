@@ -7,6 +7,7 @@ pub enum UserInput {
     CloseTab(Option<u16>),
     NextTab(bool),
     Insert(char),
+    InsertTab,
     CarriageReturn,
     CodeSeek(u16, u16, bool),
     CodeDrag(u16, u16),
@@ -138,7 +139,7 @@ impl Interface {
                         KeyCode::Char(c) => UserInput::Insert(c),
                         KeyCode::Home => UserInput::SeekLineStart(shift),
                         KeyCode::End => UserInput::SeekLineEnd(shift),
-                        KeyCode::Tab => UserInput::Insert('\t'),
+                        KeyCode::Tab => UserInput::InsertTab,
                         KeyCode::Esc => UserInput::Quit(false),
                         _ => fallback(),
                     }
