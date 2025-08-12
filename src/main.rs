@@ -536,7 +536,7 @@ fn main() -> Result<(), &'static str> {
         };
 
         if path.is_dir() {
-            app.tree.add_folder(path_str);
+            app.tree.add_local_folder(path_str);
         } else if let Err(err) = app.tabs.open(&app.syntaxes, path_str) {
             restore_term();
             println!("{err:?}");
