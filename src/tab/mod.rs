@@ -157,7 +157,11 @@ impl Tab {
         line.dirty = true;
 
         let tab_width_m1 = 3;
-        let tab_string = " ".repeat(tab_width_m1 + 1);
+        let has_hard_tabs = text.contains('\t');
+        let tab_string = match has_hard_tabs {
+            true => String::from("\t"),
+            false => " ".repeat(tab_width_m1 + 1),
+        };
 
         let mut this = Self {
             file_path,
