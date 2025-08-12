@@ -4,7 +4,7 @@ use interface::menu::{MenuItem, context_menu};
 use interface::{Interface, restore_term};
 use tab::{TabMap, TabList};
 use syntax::SyntaxFile;
-use tree::FileTree;
+use tree::Forest;
 
 use std::{env, fs, panic, backtrace};
 use std::fmt::Write;
@@ -55,7 +55,7 @@ pub struct Application {
     // singletons
     syntaxes: SyntaxFile,
     interface: Interface,
-    tree: FileTree,
+    tree: Forest,
     tabs: TabMap,
 }
 
@@ -190,8 +190,13 @@ impl Application {
         tab.ensure_cursor_visible(w, h);
     }
 
-    fn tree_toggle(&mut self, i: usize) {
-        if let Some(path) = self.tree.toggle_or_open(i) {
+    fn tree_toggle(&mut self, i: usize, index: bool) {
+        let maybe_path = match index {
+            true => self.tree.click_index(i),
+            false => self.tree.click_line(i),
+        };
+
+        if let Some(path) = maybe_path.map(String::from) {
             if let Err(err) = self.tabs.open(&self.syntaxes, path) {
                 alert!("failed to open: {err:?}");
             }
@@ -203,7 +208,7 @@ impl Application {
 
     fn carriage_return(&mut self) {
         if let Some(i) = self.tree_select {
-            return self.tree_toggle(i);
+            return self.tree_toggle(i, true);
         }
 
         let tab = self.tabs.current();
@@ -216,7 +221,7 @@ impl Application {
 
     fn insert(&mut self, c: char) {
         if let (' ', Some(i)) = (c, self.tree_select) {
-            return self.tree_toggle(i);
+            return self.tree_toggle(i, true);
         }
 
         let tab = self.tabs.current();
@@ -386,15 +391,8 @@ impl Application {
                 }
             },
             UserInput::TreeClick(y) => {
-                if let Some(path) = self.tree.click(y) {
-                    if let Err(err) = self.tabs.open(&self.syntaxes, path) {
-                        alert!("failed to open: {err:?}");
-                    }
-                }
-
                 self.tree_select.take();
-                self.update_tab_list(true);
-                self.update_left(true);
+                self.tree_toggle(y as usize, false);
             },
             UserInput::CursorClick(y) => {
                 let y = self.cursor_list_scroll + y;
@@ -516,7 +514,7 @@ fn main() -> Result<(), &'static str> {
 
         // singletons
         interface,
-        tree: FileTree::new(),
+        tree: Forest::new(),
         tabs: TabMap::new(),
         syntaxes,
     };
@@ -536,7 +534,7 @@ fn main() -> Result<(), &'static str> {
         };
 
         if path.is_dir() {
-            app.tree.add_folder(path_str);
+            app.tree.add_local_folder(path_str);
         } else if let Err(err) = app.tabs.open(&app.syntaxes, path_str) {
             restore_term();
             println!("{err:?}");
