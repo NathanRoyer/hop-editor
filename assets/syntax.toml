@@ -32,7 +32,7 @@ number-glue = ['_', '.']
 numbers = ['dec', 'hex', 'oct', 'bin']
 keywords-strong = ['pub', 'use', 'mod', 'const', 'mut', 'ref', 'true', 'false', 'break', 'continue', 'return']
 keywords-basic = ['type', 'impl', 'struct', 'enum']
-keywords-weak = ['self', 'let', 'static', 'for', 'while', 'if', 'match', 'fn']
+keywords-weak = ['self', 'let', 'static', 'for', 'while', 'if', 'else', 'match', 'fn']
 call-syms = ['(', '!', '<']
 
 [toml]
