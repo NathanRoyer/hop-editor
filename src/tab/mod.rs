@@ -1,11 +1,12 @@
 use std::mem::{swap, take, replace};
-use std::{io, fs, cmp};
 use std::fmt::Write;
 use std::sync::Arc;
+use std::{fs, cmp};
 
 use crate::interface::colored_text::{Part as TextPart, Selection};
 use crate::syntax::{Range, SyntaxFile, SyntaxConfig, LineContext};
 use crate::{alert, confirm, prompt};
+use crate::forest::FileKey;
 
 use history::History;
 
@@ -37,7 +38,7 @@ pub struct DirtyLine<'a> {
 }
 
 pub struct Tab {
-    file_path: Option<String>,
+    file_key: Option<FileKey>,
     tmp_buf: String,
     internal_clipboard: String,
     name: Arc<str>,
@@ -155,10 +156,10 @@ impl Line {
 impl Tab {
     fn new(
         syntax: Option<Arc<SyntaxConfig>>,
-        file_path: Option<String>,
+        file_key: Option<FileKey>,
         text: String,
     ) -> Self {
-        let name = file_name(&file_path);
+        let name = file_name(&file_key);
         let mut line = Line::default();
         line.must_draw = true;
 
@@ -170,7 +171,7 @@ impl Tab {
         };
 
         let mut this = Self {
-            file_path,
+            file_key,
             tmp_buf: String::new(),
             name,
             lines: vec![line],
@@ -199,16 +200,16 @@ impl Tab {
         (self.modified, self.name.clone())
     }
 
-    pub fn modified(&self) -> bool {
-        self.modified
+    pub fn modified(&mut self) -> &mut bool {
+        &mut self.modified
     }
 
     pub fn has_selections(&self) -> bool {
         self.cursors.iter().any(Cursor::selects)
     }
 
-    pub fn path(&self) -> Option<&str> {
-        self.file_path.as_deref()
+    pub fn key(&self) -> Option<&FileKey> {
+        self.file_key.as_ref()
     }
 
     fn line_index(&self, screen_y: u16) -> Option<usize> {
@@ -281,17 +282,9 @@ impl Tab {
         self.cursors[original].id = old_id;
     }
 
-    pub fn save(&mut self) {
+    pub fn save(&mut self) -> &str {
         self.rebuild();
-
-        let Some(path) = &self.file_path else {
-            alert!("[ERROR]\ncannot save: tab has no underlying file");
-            return;
-        };
-
-        if fs::write(path, &self.tmp_buf).is_ok() {
-            self.modified = false;
-        }
+        &self.tmp_buf
     }
 
     pub fn switch_syntax(&mut self, syntaxes: &SyntaxFile) {
@@ -378,26 +371,25 @@ impl TabMap {
         &mut self.inner[index]
     }
 
-    pub fn open(&mut self, syntaxes: &SyntaxFile, file_path: String) -> Result<(), io::Error> {
+    pub fn open(&mut self, syntaxes: &SyntaxFile, file: FileKey, text: String) {
         let cur_tab = self.current();
-        let replace_current = cur_tab.file_path.is_none() && !cur_tab.modified;
+        let replace_current = cur_tab.file_key.is_none() && !cur_tab.modified;
 
         for (index, tab) in self.inner.iter().enumerate() {
-            if tab.file_path.as_ref() == Some(&file_path) {
+            if tab.file_key.as_ref() == Some(&file) {
                 self.switch(index);
-                return Ok(());
+                return;
             }
         }
 
         let mut syntax = None;
-        if let Some((_, ext)) = file_path.rsplit_once('.') {
+        if let Some((_, ext)) = file.path().rsplit_once('.') {
             if let Some(lang) = syntaxes.resolve_ext(ext) {
                 syntax = syntaxes.get(lang);
             }
         }
 
-        let tmp_buf = fs::read_to_string(&file_path)?;
-        let tab = Tab::new(syntax, Some(file_path), tmp_buf);
+        let tab = Tab::new(syntax, Some(file), text);
         let new_idx = self.inner.len();
         self.inner.push(tab);
 
@@ -405,8 +397,6 @@ impl TabMap {
             true => _ = self.inner.remove(self.current),
             false => self.current = new_idx,
         }
-
-        Ok(())
     }
 
     pub fn close(&mut self, index: Option<usize>) {
@@ -452,10 +442,12 @@ impl TabMap {
         self.inner.iter().all(|t| !t.modified)
     }
 
-    pub fn is_in_use(&self, prefix: &str) -> bool {
+    pub fn is_in_use(&self, parent: &FileKey) -> bool {
         for tab in &self.inner {
-            if let Some(path) = tab.path() {
-                if path.starts_with(prefix) {
+            if let Some(key) = tab.key() {
+                let same_trunk = key.trunk() == parent.trunk();
+                let is_parent = key.path().starts_with(parent.path());
+                if same_trunk && is_parent {
                     return true;
                 }
             }
@@ -480,11 +472,11 @@ impl Ord for Cursor {
     }
 }
 
-fn file_name(path: &Option<String>) -> Arc<str> {
-    let name = match path {
-        Some(path) => match path.rsplit_once('/') {
+fn file_name(maybe_key: &Option<FileKey>) -> Arc<str> {
+    let name = match maybe_key {
+        Some(key) => match key.path().rsplit_once('/') {
             Some((_, name)) => name,
-            None => path,
+            None => key.path(),
         },
         None => "[unnamed]",
     };

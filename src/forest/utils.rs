@@ -7,7 +7,7 @@ pub struct Walker {
 }
 
 impl Walker {
-    pub fn walk<'a, T: TrunkApi>(&'a mut self, trunk: &T, i: usize) -> &'a str {
+    pub fn walk<'a, T: AnchorApi>(&'a mut self, trunk: &T, i: usize) -> &'a str {
         let mut entry = trunk.get(i);
         let mut depth = entry.depth();
         let mut j = i;
@@ -39,7 +39,7 @@ impl Walker {
     }
 }
 
-pub fn reveal<T: TrunkApi>(trunk: &mut T, mut path: &str) -> Option<usize> {
+pub fn reveal<T: AnchorApi>(trunk: &mut T, mut path: &str) -> Option<usize> {
     path = path.strip_prefix(trunk.prefix())?;
     let mut i = 0;
 

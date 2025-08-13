@@ -2,9 +2,9 @@ use interface::colored_text::{ColoredText, Part as TextPart, Selection};
 use interface::input::{UserInput, ResizeEvent, Location};
 use interface::menu::{MenuItem, context_menu};
 use interface::{Interface, restore_term};
+use forest::{Forest, FileKey};
 use tab::{TabMap, TabList};
 use syntax::SyntaxFile;
-use forest::Forest;
 
 use std::{env, fs, panic, backtrace};
 use std::fmt::Write;
@@ -191,15 +191,13 @@ impl Application {
     }
 
     fn tree_toggle(&mut self, i: usize, index: bool) {
-        let maybe_path = match index {
+        let maybe_key = match index {
             true => self.forest.click_index(i),
             false => self.forest.click_line(i),
         };
 
-        if let Some(path) = maybe_path.map(String::from) {
-            if let Err(err) = self.tabs.open(&self.syntaxes, path) {
-                alert!("failed to open: {err:?}");
-            }
+        if let Some((key, text)) = maybe_key {
+            self.tabs.open(&self.syntaxes, key, text);
         }
 
         self.update_left(true);
@@ -212,7 +210,7 @@ impl Application {
         }
 
         let tab = self.tabs.current();
-        let no_mod = !tab.modified();
+        let no_mod = !*tab.modified();
         tab.smart_carriage_return();
         self.ensure_cursor_visible();
         self.update_tab_list(no_mod);
@@ -225,7 +223,7 @@ impl Application {
         }
 
         let tab = self.tabs.current();
-        let no_mod = !tab.modified();
+        let no_mod = !*tab.modified();
         tab.insert_char(c);
         self.ensure_cursor_visible();
         self.update_tab_list(no_mod);
@@ -288,7 +286,7 @@ impl Application {
 
         let tab = self.tabs.current();
         let mut ensure_cursor_visible = false;
-        let mut update_tab_list = !tab.modified();
+        let mut update_tab_list = !*tab.modified();
 
         // all of these should update tab list
         match event {
@@ -366,11 +364,19 @@ impl Application {
             UserInput::Quit(with_ctrl) => self.quit(with_ctrl),
             UserInput::PanelResize(toggle) => self.resize_left_panel(toggle),
             UserInput::Save => {
-                tab.save();
-                self.update_tab_list(true);
+                let Some(key) = tab.key().cloned() else {
+                    alert!("Cannot save: Tab has no underlying file.");
+                    return;
+                };
+
+                let text = tab.save();
+                if self.forest.save(&key, text).is_ok() {
+                    *tab.modified() = false;
+                    self.update_tab_list(true);
+                }
             },
             UserInput::ContextMenu(Location::TreeRow(row), x, y) => {
-                let is_in_use = |p: &str| self.tabs.is_in_use(p);
+                let is_in_use = |p: &forest::FileKey| self.tabs.is_in_use(p);
                 self.forest.right_click(x, y, row, is_in_use);
                 self.update_left(true);
             },
@@ -446,8 +452,19 @@ impl Application {
                 self.update_tab_list(tab_hover.is_some());
             },
             UserInput::Reveal => {
-                let path = tab.path().unwrap_or("");
-                let index = self.forest.reveal_path(path).unwrap_or(0);
+                let maybe_index = if let Some(key) = tab.key() {
+                    self.forest.reveal(key)
+                } else if self.forest.is_empty() {
+                    None
+                } else {
+                    Some(0)
+                };
+
+                let Some(index) = maybe_index else {
+                    alert!("Empty Forest! Please open a folder.");
+                    return;
+                };
+
                 self.tree_select = Some(index);
                 self.update_left(true);
             },
@@ -521,6 +538,8 @@ fn main() -> Result<(), &'static str> {
 
     let mut args = env::args();
     let _this = args.next();
+    let mut dirs = Vec::new();
+    let mut files = Vec::new();
 
     for arg in args {
         let Ok(path) = fs::canonicalize(arg) else {
@@ -533,12 +552,40 @@ fn main() -> Result<(), &'static str> {
             return Err("invalid path");
         };
 
-        if path.is_dir() {
-            app.forest.add_local_folder(path_str);
-        } else if let Err(err) = app.tabs.open(&app.syntaxes, path_str) {
-            restore_term();
-            println!("{err:?}");
-            return Err("failed to open some files");
+        match path.is_dir() {
+            true => dirs.push(path_str),
+            false => files.push(path_str),
+        }
+    }
+
+    for dir_path in dirs {
+        let trunk = app.forest.add_local_folder(&dir_path);
+
+        let mut i = 0;
+        while i < files.len() {
+            let file_path = &files[i];
+            if file_path.starts_with(&dir_path) {
+                let key = FileKey::new(trunk.clone(), file_path.clone());
+
+                if let Some(text) = app.forest.open(&key) {
+                    app.tabs.open(&app.syntaxes, key, text);
+                }
+
+                files.remove(i);
+                continue;
+            }
+
+            i += 1;
+        }
+    }
+
+    for file_path in files {
+        match fs::read_to_string(&file_path) {
+            Ok(text) => {
+                let key = FileKey::fallback(file_path);
+                app.tabs.open(&app.syntaxes, key, text)
+            },
+            Err(err) => alert!("{file_path}: {err}"),
         }
     }
 

@@ -2,13 +2,16 @@
 
 use std::{io, fs, cmp};
 use std::fmt::Write;
+use std::sync::Arc;
 use std::mem::take;
 
 use crate::interface::menu::{MenuItem, context_menu};
 use crate::{alert, confirm, prompt};
 use crate::config::hide_folder;
 
-use entry::{Options, EntryApi, TrunkApi};
+pub use entry::FileKey;
+
+use entry::{Options, EntryApi, TrunkApi, AnchorApi, TrunkId};
 use local_fs::FsTrunk;
 use utils::Walker;
 
@@ -31,9 +34,11 @@ impl Forest {
         }
     }
 
-    pub fn add_local_folder(&mut self, path: String) {
+    pub fn add_local_folder(&mut self, path: &str) -> TrunkId {
         let trunk = FsTrunk::new(path);
+        let id = trunk.id();
         self.trunks.push(trunk);
+        id
     }
 
     fn len(&self) -> usize {
@@ -79,8 +84,7 @@ impl Forest {
         };
 
         let _ = write!(buf, " {:1$}{sym} {name}", "", indent);
-
-        Some(i)
+        Some(index as usize + self.scroll)
     }
 
     pub fn check_overscroll(&mut self) {
@@ -95,15 +99,28 @@ impl Forest {
         self.scroll = self.scroll.checked_add_signed(delta).unwrap_or(0);
     }
 
-    pub fn reveal_path(&mut self, path: &str) -> Option<usize> {
-        self.trunks.iter_mut().find_map(|t| t.reveal(path))
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
-    pub fn click_line(&mut self, line: usize) -> Option<&str> {
+    fn trunk_by_id(&mut self, trunk_id: &str) -> Option<&mut FsTrunk> {
+        self
+            .trunks
+            .iter_mut()
+            .find(|t| &*t.id() == trunk_id)
+    }
+
+    pub fn reveal(&mut self, key: &FileKey) -> Option<usize> {
+        let id = key.trunk()?;
+        let trunk = self.trunk_by_id(id)?;
+        trunk.reveal(&key.path())
+    }
+
+    pub fn click_line(&mut self, line: usize) -> Option<(FileKey, String)> {
         self.click_index(line + self.scroll)
     }
 
-    pub fn click_index(&mut self, mut i: usize) -> Option<&str> {
+    pub fn click_index(&mut self, mut i: usize) -> Option<(FileKey, String)> {
         let trunk = self.trunk_mut(&mut i)?;
 
         if trunk.get(i).is_dir() {
@@ -114,12 +131,42 @@ impl Forest {
 
             None
         } else {
-            trunk.prepare_path(i);
-            Some(trunk.get_path())
+            let key = trunk.file_key(i);
+            self.open(&key).map(|text| (key, text))
         }
     }
 
-    pub fn right_click<F: Fn(&str) -> bool>(
+    pub fn open(&mut self, key: &FileKey) -> Option<String> {
+        let id = key.trunk()?;
+        let trunk = self.trunk_by_id(id)?;
+
+        match trunk.file_text(key.path()) {
+            Ok(text) => Some(text),
+            Err(error) => {
+                alert!("{}: {error}", key.path());
+                None
+            },
+        }
+    }
+
+    pub fn save(&mut self, key: &FileKey, text: &str) -> Result<(), ()> {
+        let result = match key.trunk() {
+            Some(id) => match self.trunk_by_id(id) {
+                Some(trunk) => trunk.save_file(key.path(), text),
+                None => Err("Failed to find file trunk".to_string()),
+            },
+            None => local_fs::save(key.path(), text),
+        };
+
+        if let Err(error) = result {
+            alert!("{}: {error}", key.path());
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn right_click<F: Fn(&FileKey) -> bool>(
         &mut self,
         x: u16,
         y: u16,
@@ -132,13 +179,12 @@ impl Forest {
         };
 
         let mut options = Vec::with_capacity(8);
-        trunk.prepare_path(i);
         trunk.menu(i, &mut options);
-        let path = trunk.get_path();
 
         if let Some(action) = context_menu(x, y, &options) {
             let forbid_use = [MenuItem::Rename, MenuItem::Delete];
-            let in_use = is_in_use(&path);
+            let key = trunk.file_key(i);
+            let in_use = is_in_use(&key);
 
             if forbid_use.contains(&action) && in_use {
                 alert!("Not possible!\nAt least one of your tabs relies on this path.");

@@ -7,6 +7,7 @@ fn pop_dir_slash(text: &str) -> &str {
 }
 
 pub struct FsTrunk {
+    id: Arc<str>,
     prefix: String,
     entries: Vec<Entry>,
     walker: Walker,
@@ -33,14 +34,16 @@ impl EntryApi for Entry {
 }
 
 impl FsTrunk {
-    pub fn new(mut path: String) -> Self {
-        while path.ends_with("/") {
-            path.pop();
+    pub fn new(mut path: &str) -> Self {
+        while let Some(prev) = path.strip_suffix("/") {
+            path = prev;
         }
+
+        let id = Arc::from(path);
 
         let (mut prefix, mut name) = match path.rsplit_once('/') {
             Some((a, b)) => (a.to_string(), b.to_string()),
-            None => (".".to_string(), path),
+            None => (".".to_string(), path.to_string()),
         };
 
         prefix.push('/');
@@ -52,6 +55,7 @@ impl FsTrunk {
         };
 
         Self {
+            id,
             prefix,
             entries: vec![base],
             walker: Walker::default(),
@@ -118,6 +122,7 @@ impl FsTrunk {
         let old_path = self.walker.result();
         let mut new_path = old_path.to_string();
         let entry = &mut self.entries[i];
+        assert!(old_path.ends_with(entry.name()));
         let old_name = pop_dir_slash(entry.name());
 
         match action {
@@ -159,11 +164,23 @@ impl FsTrunk {
 
         Ok(())
     }
+
+    fn prepare_path(&mut self, i: usize) {
+        let mut walker = take(&mut self.walker);
+        walker.walk(self, i);
+        self.walker = walker;
+    }
+}
+
+impl AnchorApi for FsTrunk {
+    fn prefix(&self) -> &str {
+        &self.prefix
+    }
 }
 
 impl TrunkApi for FsTrunk {
-    fn prefix(&self) -> &str {
-        &self.prefix
+    fn id(&self) -> TrunkId {
+        self.id.clone()
     }
 
     fn len(&self) -> usize {
@@ -174,14 +191,19 @@ impl TrunkApi for FsTrunk {
         &self.entries[i]
     }
 
-    fn prepare_path(&mut self, i: usize) {
-        let mut walker = take(&mut self.walker);
-        walker.walk(self, i);
-        self.walker = walker;
+    fn file_key(&mut self, i: usize) -> FileKey {
+        self.prepare_path(i);
+        let path = self.walker.result().to_string();
+        let trunk = self.id();
+        FileKey::new(trunk, path)
     }
 
-    fn get_path(&self) -> &str {
-        self.walker.result()
+    fn file_text(&mut self, path: &str) -> Result<String, String> {
+        fs::read_to_string(path).map_err(|e| format!("{e}"))
+    }
+
+    fn save_file(&mut self, path: &str, text: &str) -> Result<(), String> {
+        save(path, text)
     }
 
     fn open_dir(&mut self, i: usize) {
@@ -274,6 +296,10 @@ fn read_dir(dir_path: &str, entries: &mut Vec<Entry>, depth: usize) -> io::Resul
     }
 
     Ok(())
+}
+
+pub fn save(path: &str, text: &str) -> Result<(), String> {
+    fs::write(path, text).map_err(|e| format!("{e}"))
 }
 
 impl PartialOrd for Entry {

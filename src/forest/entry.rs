@@ -1,6 +1,31 @@
 use super::*;
 
 pub type Options<'a> = &'a mut Vec<MenuItem>;
+pub type TrunkId = Arc<str>;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileKey {
+    trunk: Option<TrunkId>,
+    path: String,
+}
+
+impl FileKey {
+    pub fn new(trunk: TrunkId, path: String) -> Self {
+        Self { trunk: Some(trunk), path }
+    }
+
+    pub fn fallback(path: String) -> Self {
+        Self { trunk: None, path }
+    }
+
+    pub fn trunk(&self) -> Option<&str> {
+        self.trunk.as_deref()
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+}
 
 pub trait EntryApi {
     fn name(&self) -> &str;
@@ -9,20 +34,24 @@ pub trait EntryApi {
 }
 
 pub trait TrunkApi {
-    fn prefix(&self) -> &str;
+    fn id(&self) -> TrunkId;
+
     fn len(&self) -> usize;
     fn get(&self, i: usize) -> &dyn EntryApi;
 
-    fn prepare_path(&mut self, i: usize);
-    fn get_path(&self) -> &str;
+    fn file_key(&mut self, i: usize) -> FileKey;
+    fn file_text(&mut self, path: &str) -> Result<String, String>;
+    fn save_file(&mut self, path: &str, text: &str) -> Result<(), String>;
 
     fn open_dir(&mut self, i: usize);
     fn close_dir(&mut self, i: usize);
 
-    fn menu(&mut self, i: usize, options: Options);
-    fn act(&mut self, i: usize, action: MenuItem);
+    fn menu(&mut self, i: usize, options: Options) {}
+    fn act(&mut self, i: usize, action: MenuItem) {}
 
-    fn reveal(&mut self, path: &str) -> Option<usize>;
+    fn reveal(&mut self, path: &str) -> Option<usize> {
+        None
+    }
 
     fn is_dir_open(&self, mut i: usize) -> bool {
         let depth = self.get(i).depth();
@@ -33,4 +62,8 @@ pub trait TrunkApi {
             false => false,
         }
     }
+}
+
+pub trait AnchorApi: TrunkApi {
+    fn prefix(&self) -> &str;
 }
