@@ -7,7 +7,7 @@ hop project-a/ project-b/ project-a/src/main.rs
 ```
 
 In the example above, hop is asked to:
-- add two folders in the file tree: `project-a/` & `project-b/`
+- add two folders to the "forest" in the left panel: `project-a/` & `project-b/`
 - open one file for edition: `project-a/src/main.rs`
 
 All files and directories passed as arguments must be valid, existing paths.
@@ -19,7 +19,7 @@ before quitting.
 
 | User Input           | Action                               |
 |----------------------|--------------------------------------|
-| Escape               | Quit `hop` or filetree keyboard mode |
+| Escape               | Quit `hop` or forest keyboard mode   |
 | Ctrl + Q             | Quit `hop`                           |
 
 ## Cursors
@@ -67,16 +67,15 @@ before quitting.
 | Ctrl + W             | Close Tab                            |
 | Middle Click         | Close Tab                            |
 
-## File Tree Mode
+## Forest Mode
 
 | User Input           | Action                               |
 |----------------------|--------------------------------------|
-| Ctrl + O             | Switch to file tree keyboard mode    |
+| Ctrl + O             | Reveal current file in forest mode   |
 | Escape or Click      | Return to normal keyboard mode       |
 | Enter or Space       | Open file / (un)fold directory       |
 | Left and Right       | Enter and Leave directories          |
-| Up and Down          | Navigate in tree                     |
-| Ctrl + F             | Find in tree                  [todo] |
+| Up and Down          | Navigate in forest                   |
 
 ## Others
 

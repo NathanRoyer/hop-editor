@@ -184,12 +184,3 @@ impl Forest {
         }
     }
 }
-
-fn replace_last(dst: &mut String, from: &str, to: &str) {
-    let start = dst
-        .rfind(from)
-        .expect("replace_last: no occurence!");
-
-    let stop = start + from.len();
-    dst.replace_range(start..stop, to);
-}

@@ -4,7 +4,7 @@ use interface::menu::{MenuItem, context_menu};
 use interface::{Interface, restore_term};
 use tab::{TabMap, TabList};
 use syntax::SyntaxFile;
-use tree::Forest;
+use forest::Forest;
 
 use std::{env, fs, panic, backtrace};
 use std::fmt::Write;
@@ -12,7 +12,7 @@ use std::fmt::Write;
 mod interface;
 mod config;
 mod syntax;
-mod tree;
+mod forest;
 mod tab;
 
 const CONFIRM_QUIT: &str = "[UNSAVED FILES]\nReally Quit? Some files have unsaved edits!";
@@ -55,7 +55,7 @@ pub struct Application {
     // singletons
     syntaxes: SyntaxFile,
     interface: Interface,
-    tree: Forest,
+    forest: Forest,
     tabs: TabMap,
 }
 
@@ -114,7 +114,7 @@ impl Application {
         let num_cursors = tab.cursor_count() as u16;
         let cursor_lines = num_cursors.min(max_cursors);
         let tree_lines = height.saturating_sub(cursor_lines + 1);
-        self.tree.check_overscroll();
+        self.forest.check_overscroll();
 
         if self.shown_cursors != cursor_lines {
             self.shown_cursors = cursor_lines;
@@ -124,7 +124,7 @@ impl Application {
 
         for i in 0..tree_lines {
             self.str_buf.clear();
-            let maybe_line = self.tree.line(&mut self.str_buf, i);
+            let maybe_line = self.forest.line(&mut self.str_buf, i);
             let selected = self.tree_select == maybe_line;
             let hovered = self.tree_hover == Some(i);
             self.interface.set_tree_row(selected, hovered, i, &self.str_buf);
@@ -166,7 +166,7 @@ impl Application {
 
     fn scroll(&mut self, delta: isize) {
         if self.tree_hover.is_some() || self.tree_select.is_some() {
-            self.tree.scroll(delta);
+            self.forest.scroll(delta);
             self.update_left(true);
         } else if self.cursor_hover.is_some() {
             let n = &mut self.cursor_list_scroll;
@@ -192,8 +192,8 @@ impl Application {
 
     fn tree_toggle(&mut self, i: usize, index: bool) {
         let maybe_path = match index {
-            true => self.tree.click_index(i),
-            false => self.tree.click_line(i),
+            true => self.forest.click_index(i),
+            false => self.forest.click_line(i),
         };
 
         if let Some(path) = maybe_path.map(String::from) {
@@ -235,8 +235,8 @@ impl Application {
     fn horizontal_jump(&mut self, delta: isize, shift: bool) {
         if let Some(i) = self.tree_select.as_mut() {
             match delta < 0 {
-                true => self.tree.leave_dir(i),
-                false => self.tree.enter_dir(i),
+                true => self.forest.leave_dir(i),
+                false => self.forest.enter_dir(i),
             }
 
             self.update_left(true);
@@ -251,7 +251,7 @@ impl Application {
     fn vertical_jump(&mut self, delta: isize, shift: bool) {
         if let Some(i) = self.tree_select.as_mut() {
             if !shift {
-                self.tree.up_down(i, delta);
+                self.forest.up_down(i, delta);
                 self.update_left(true);
             }
         } else {
@@ -371,7 +371,7 @@ impl Application {
             },
             UserInput::ContextMenu(Location::TreeRow(row), x, y) => {
                 let is_in_use = |p: &str| self.tabs.is_in_use(p);
-                self.tree.right_click(x, y, row, is_in_use);
+                self.forest.right_click(x, y, row, is_in_use);
                 self.update_left(true);
             },
             UserInput::ContextMenu(Location::Tab(col), x, y) => self.tab_menu(col, x, y),
@@ -447,7 +447,7 @@ impl Application {
             },
             UserInput::Reveal => {
                 let path = tab.path().unwrap_or("");
-                let index = self.tree.reveal_path(path).unwrap_or(0);
+                let index = self.forest.reveal_path(path).unwrap_or(0);
                 self.tree_select = Some(index);
                 self.update_left(true);
             },
@@ -514,7 +514,7 @@ fn main() -> Result<(), &'static str> {
 
         // singletons
         interface,
-        tree: Forest::new(),
+        forest: Forest::new(),
         tabs: TabMap::new(),
         syntaxes,
     };
@@ -534,7 +534,7 @@ fn main() -> Result<(), &'static str> {
         };
 
         if path.is_dir() {
-            app.tree.add_local_folder(path_str);
+            app.forest.add_local_folder(path_str);
         } else if let Err(err) = app.tabs.open(&app.syntaxes, path_str) {
             restore_term();
             println!("{err:?}");

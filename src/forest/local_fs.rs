@@ -126,7 +126,7 @@ impl FsTrunk {
                     return Ok(());
                 };
 
-                replace_last(&mut new_path, &old_name, &new_name);
+                utils::replace_last(&mut new_path, &old_name, &new_name);
                 fs::rename(old_path, new_path)?;
 
                 if entry.is_dir() {
