@@ -1,0 +1,15 @@
+ Hop is a terminal-based text/code editor.
+
+ usage: hop <valid paths>
+
+ Path Arguments:
+  - Each path must point to an existing file or directory.
+  - Paths can be relative or absolute.
+
+ Environment Variables:
+  - HOP_CONFIG: path to TOML config file, defaults to '~/.config/hop/config.toml'.
+
+ To create a new file, I suggest opening its parent directory
+ and creating the file via the context menu of this directory.
+
+ See <https://github.com/NathanRoyer/hop-editor/> for more information.

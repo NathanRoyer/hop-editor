@@ -68,9 +68,10 @@ There you will also find a default syntax file.
 ### TOML Contents
 
 - `internal-clipboard`: set to `true` if you don't want to use the system-wide clipboard
+- `max-cursor-lines`: max number of lines that the cursor list can take in left panel
 - `hide-folders`: list of folders to hide in the file tree
 - `syntax-file`: path to a syntax file for syntax highligting
-- `tree-width`: decimal number of columns for the file tree
+- `tree-width`: number of columns for the file tree
 - `background`: hexadecimal color code for the background
 - `syntax`: map of syntax token types to hexadecimal color codes
 - `hover`: hexadecimal color code for hovering color (tree & tabs)

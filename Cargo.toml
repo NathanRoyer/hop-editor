@@ -1,6 +1,6 @@
 [package]
 name = 'hop-editor'
-version = '1.0.0'
+version = '1.1.0'
 edition = '2021'
 authors = [ 'Nathan ROYER <nathan.royer.pro@gmail.com>' ]
 repository = 'https://github.com/NathanRoyer/hop-editor'

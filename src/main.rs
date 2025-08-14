@@ -548,6 +548,12 @@ fn main() -> Result<(), &'static str> {
     let mut files = Vec::new();
 
     for arg in args {
+        if ["-h", "--help", "help"].contains(&&*arg) {
+            restore_term();
+            println!("{}", include_str!("../assets/help.txt"));
+            return Ok(());
+        }
+
         let Ok(path) = fs::canonicalize(arg) else {
             restore_term();
             return Err("invalid path");

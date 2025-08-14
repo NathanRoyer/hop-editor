@@ -95,7 +95,7 @@ impl Interface {
     }
 
     pub fn draw_decorations(&mut self) {
-        queue!(self.stdout, SetBackgroundColor(Color::Reset)).unwrap();
+        queue!(self.stdout, SetBackgroundColor(default_bg_color())).unwrap();
         queue!(self.stdout, Clear(ClearType::All)).unwrap();
         self.write_header(0, " Folders ");
 
