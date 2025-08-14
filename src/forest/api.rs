@@ -1,3 +1,4 @@
+use enum_dispatch::enum_dispatch;
 use super::*;
 
 pub type Options<'a> = &'a mut Vec<MenuItem>;
@@ -33,6 +34,7 @@ pub trait EntryApi {
     fn is_dir(&self) -> bool;
 }
 
+#[enum_dispatch(Trunk)]
 pub trait TrunkApi {
     fn id(&self) -> TrunkId;
 
@@ -43,6 +45,10 @@ pub trait TrunkApi {
     fn file_text(&mut self, path: &str) -> Result<String, String>;
     fn save_file(&mut self, path: &str, text: &str) -> Result<(), String>;
 
+    fn search(&mut self, i: usize, text: &str) -> Vec<String> {
+        Vec::new()
+    }
+
     fn open_dir(&mut self, i: usize);
     fn close_dir(&mut self, i: usize);
 
@@ -50,6 +56,11 @@ pub trait TrunkApi {
     fn act(&mut self, i: usize, action: MenuItem) {}
 
     fn reveal(&mut self, path: &str) -> Option<usize> {
+        None
+    }
+
+    // extension for search_fs
+    fn search_term(&self) -> Option<String> {
         None
     }
 
@@ -66,4 +77,10 @@ pub trait TrunkApi {
 
 pub trait AnchorApi: TrunkApi {
     fn prefix(&self) -> &str;
+}
+
+#[enum_dispatch]
+pub enum Trunk {
+    FsTrunk,
+    SearchTrunk,
 }

@@ -9,20 +9,28 @@ use crate::interface::menu::{MenuItem, context_menu};
 use crate::{alert, confirm, prompt};
 use crate::config::hide_folder;
 
-pub use entry::FileKey;
+pub use api::FileKey;
 
-use entry::{Options, EntryApi, TrunkApi, AnchorApi, TrunkId};
+use api::{Options, EntryApi, TrunkApi, AnchorApi, TrunkId, Trunk};
+use search_fs::SearchTrunk;
 use local_fs::FsTrunk;
 use utils::Walker;
 
-mod entry;
+mod api;
 mod utils;
 mod local_fs;
+mod search_fs;
 
 // syms: ▷▽▶▼;
 
+pub struct FileBundle {
+    pub key: FileKey,
+    pub text: String,
+    pub searched: Option<String>,
+}
+
 pub struct Forest {
-    trunks: Vec<FsTrunk>,
+    trunks: Vec<Trunk>,
     scroll: usize,
 }
 
@@ -37,7 +45,7 @@ impl Forest {
     pub fn add_local_folder(&mut self, path: &str) -> TrunkId {
         let trunk = FsTrunk::new(path);
         let id = trunk.id();
-        self.trunks.push(trunk);
+        self.trunks.push(trunk.into());
         id
     }
 
@@ -45,7 +53,7 @@ impl Forest {
         self.trunks.iter().map(|t| t.len()).sum()
     }
 
-    fn trunk(&self, offset: &mut usize) -> Option<&FsTrunk> {
+    fn trunk(&self, offset: &mut usize) -> Option<&Trunk> {
         for trunk in self.trunks.iter() {
             if let Some(next) = offset.checked_sub(trunk.len()) {
                 *offset = next;
@@ -57,7 +65,7 @@ impl Forest {
         None
     }
 
-    fn trunk_mut(&mut self, offset: &mut usize) -> Option<&mut FsTrunk> {
+    fn trunk_mut(&mut self, offset: &mut usize) -> Option<&mut Trunk> {
         for trunk in self.trunks.iter_mut() {
             if let Some(next) = offset.checked_sub(trunk.len()) {
                 *offset = next;
@@ -103,7 +111,7 @@ impl Forest {
         self.len() == 0
     }
 
-    fn trunk_by_id(&mut self, trunk_id: &str) -> Option<&mut FsTrunk> {
+    fn trunk_by_id(&mut self, trunk_id: &str) -> Option<&mut Trunk> {
         self
             .trunks
             .iter_mut()
@@ -116,11 +124,11 @@ impl Forest {
         trunk.reveal(&key.path())
     }
 
-    pub fn click_line(&mut self, line: usize) -> Option<(FileKey, String)> {
-        self.click_index(line + self.scroll)
+    pub fn toggle_line(&mut self, line: usize) -> Option<FileBundle> {
+        self.toggle_index(line + self.scroll)
     }
 
-    pub fn click_index(&mut self, mut i: usize) -> Option<(FileKey, String)> {
+    pub fn toggle_index(&mut self, mut i: usize) -> Option<FileBundle> {
         let trunk = self.trunk_mut(&mut i)?;
 
         if trunk.get(i).is_dir() {
@@ -132,7 +140,14 @@ impl Forest {
             None
         } else {
             let key = trunk.file_key(i);
-            self.open(&key).map(|text| (key, text))
+            let searched = trunk.search_term().into();
+            let text = self.open(&key)?;
+
+            Some(FileBundle {
+                key,
+                text,
+                searched,
+            })
         }
     }
 
@@ -173,7 +188,8 @@ impl Forest {
         entry: u16,
         is_in_use: F,
     ) {
-        let mut i = entry as usize + self.scroll;
+        let j = entry as usize + self.scroll;
+        let mut i = j;
         let Some(trunk) = self.trunk_mut(&mut i) else {
             return;
         };
@@ -181,7 +197,28 @@ impl Forest {
         let mut options = Vec::with_capacity(8);
         trunk.menu(i, &mut options);
 
+        if i == 0 {
+            options.push(MenuItem::CloseTree);
+        }
+
+        if options.is_empty() {
+            return;
+        }
+
         if let Some(action) = context_menu(x, y, &options) {
+            if action == MenuItem::CloseTree {
+                self.remove_tree(j);
+                return;
+            }
+
+            if action == MenuItem::Search {
+                if let Some(text) = prompt!("{}", crate::SEARCH_PROMPT) {
+                    let id = trunk.id();
+                    self.search(id, i, text);
+                }
+                return;
+            }
+
             let forbid_use = [MenuItem::Rename, MenuItem::Delete];
             let key = trunk.file_key(i);
             let in_use = is_in_use(&key);
@@ -192,6 +229,33 @@ impl Forest {
             }
 
             trunk.act(i, action);
+        }
+    }
+
+    pub fn search(&mut self, id: TrunkId, local: usize, text: String) {
+        let Some(trunk) = self.trunk_by_id(&id) else {
+            alert!("Failed to find file trunk");
+            return;
+        };
+
+        let paths = trunk.search(local, &text);
+
+        if !paths.is_empty() {
+            let trunk = SearchTrunk::new(id, paths, text);
+            self.trunks.push(trunk.into());
+        } else {
+            alert!("Not found in searched files");
+        }
+    }
+
+    pub fn remove_tree(&mut self, mut offset: usize) {
+        for (i, trunk) in self.trunks.iter().enumerate() {
+            if let Some(next) = offset.checked_sub(trunk.len()) {
+                offset = next;
+            } else {
+                self.trunks.remove(i);
+                break;
+            }
         }
     }
 

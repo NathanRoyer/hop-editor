@@ -16,6 +16,7 @@ mod forest;
 mod tab;
 
 const CONFIRM_QUIT: &str = "[UNSAVED FILES]\nReally Quit? Some files have unsaved edits!";
+const SEARCH_PROMPT: &str = "Please input the text to look for:";
 
 const DEFAULT_CONFIG: &str = include_str!("../assets/config.toml");
 const DEFAULT_SYNTAX: &str = include_str!("../assets/syntax.toml");
@@ -191,13 +192,18 @@ impl Application {
     }
 
     fn tree_toggle(&mut self, i: usize, index: bool) {
-        let maybe_key = match index {
-            true => self.forest.click_index(i),
-            false => self.forest.click_line(i),
+        let bundle = match index {
+            true => self.forest.toggle_index(i),
+            false => self.forest.toggle_line(i),
         };
 
-        if let Some((key, text)) = maybe_key {
-            self.tabs.open(&self.syntaxes, key, text);
+        if let Some(bundle) = bundle {
+            self.tabs.open(&self.syntaxes, bundle.key, bundle.text);
+
+            if let Some(term) = bundle.searched {
+                self.tabs.current().locate(&term);
+                self.ensure_cursor_visible();
+            }
         }
 
         self.update_left(true);

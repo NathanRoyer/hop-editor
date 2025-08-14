@@ -202,6 +202,13 @@ impl TrunkApi for FsTrunk {
         fs::read_to_string(path).map_err(|e| format!("{e}"))
     }
 
+    fn search(&mut self, i: usize, text: &str) -> Vec<String> {
+        self.prepare_path(i);
+        let mut paths = Vec::new();
+        recursive_search(&mut paths, self.walker.result(), text);
+        paths
+    }
+
     fn save_file(&mut self, path: &str, text: &str) -> Result<(), String> {
         save(path, text)
     }
@@ -238,7 +245,7 @@ impl TrunkApi for FsTrunk {
         use MenuItem::*;
 
         if self.get(i).is_dir() {
-            options.extend([NewFile, NewDir]);
+            options.extend([Search, NewFile, NewDir]);
         }
 
         options.extend([Rename, Delete]);
@@ -315,6 +322,47 @@ impl Ord for Entry {
             (true, false) => cmp::Ordering::Less,
             (false, true) => cmp::Ordering::Greater,
             _ => self.name().cmp(other.name()),
+        }
+    }
+}
+
+fn recursive_search(paths: &mut Vec<String>, dir_path: &str, text: &str) {
+    let Ok(dir_iter) = fs::read_dir(dir_path) else {
+        return;
+    };
+
+    for item in dir_iter {
+        let Ok(item) = item else {
+            continue;
+        };
+
+        let path = item.path();
+        let Some(path_str) = path.to_str() else {
+            continue;
+        };
+
+        let file_name = match path_str.rsplit_once('/') {
+            Some((_, name)) => name,
+            None => path_str,
+        };
+
+        let hidden = hide_folder(&file_name);
+
+        let (Ok(ft), false) = (item.file_type(), hidden) else {
+            continue;
+        };
+
+        if ft.is_dir() {
+            recursive_search(paths, path_str, text);
+            continue;
+        }
+
+        let Ok(contents) = fs::read_to_string(&path_str) else {
+            continue;
+        };
+
+        if contents.contains(text) {
+            paths.push(path_str.into());
         }
     }
 }

@@ -25,6 +25,7 @@ toml = { version = '0.9', default-features = false, features = ['serde', 'parse'
 serde = { version = '1.0', features = ['derive', 'rc'] }
 hex_color = { version = '3.0', features = ['serde'] }
 litemap = { version = '0.8', features = ['serde'] }
+enum_dispatch = "0.3"
 
 # vt100
 

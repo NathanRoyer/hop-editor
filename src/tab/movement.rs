@@ -335,13 +335,15 @@ impl Tab {
             self.extract_selection(c, &mut dst);
             Some(dst)
         } else {
-            prompt!("Please input the text to look for:")
+            prompt!("{}", crate::SEARCH_PROMPT)
         };
 
-        let Some(text) = maybe_text else {
-            return;
-        };
+        if let Some(text) = maybe_text {
+            self.locate(&text);
+        }
+    }
 
+    pub fn locate(&mut self, text: &str) {
         let num_chars = text.chars().count() as isize;
         let mut cursor = Cursor::new(0);
         let mut c = 0;

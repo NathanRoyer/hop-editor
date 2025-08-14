@@ -121,8 +121,8 @@ pub fn hover_color() -> Color {
     color(Some(&config().general.hover))
 }
 
-pub fn hide_folder(folder: &String) -> bool {
-    config().general.hide_folders.contains(folder)
+pub fn hide_folder(folder: &str) -> bool {
+    config().general.hide_folders.iter().any(|f| f == folder)
 }
 
 pub fn internal_clipboard() -> bool {

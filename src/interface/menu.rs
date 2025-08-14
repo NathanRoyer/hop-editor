@@ -10,6 +10,8 @@ pub enum MenuItem {
     NewDir,
     Rename,
     Delete,
+    Search,
+    CloseTree,
 }
 
 impl Deref for MenuItem {
@@ -20,10 +22,12 @@ impl Deref for MenuItem {
             Self::IndentMode => "Indent Mode",
             Self::CloseTab => "Close Tab",
             Self::NewFile => "New File",
+            Self::CloseTree => "Close",
             Self::NewDir => "New Dir.",
             Self::Syntax => "Syntax",
             Self::Rename => "Rename",
             Self::Delete => "Delete",
+            Self::Search => "Search",
         }
     }
 }
