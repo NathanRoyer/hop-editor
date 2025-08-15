@@ -4,6 +4,9 @@ This project aims to provide a terminal-based text and code editor,
 taking a lot of inspiration from Sublime Text.
 
 
+![screenshot](assets/screenshot.png)
+
+
 ## Features
 
 - pin folders to a file tree
@@ -11,6 +14,7 @@ taking a lot of inspiration from Sublime Text.
 - edit multiple files via tabs
 - cheap syntax highlighting
 - intuitive mouse support
+- some context-menus
 - clipboard support
 - multi-cursor
 
