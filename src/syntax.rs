@@ -40,7 +40,7 @@ pub struct StringConfig {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct SyntaxConfig {
-    extension: String,
+    extensions: Vec<String>,
     strings_normal: Vec<StringConfig>,
 
     #[serde(default)]
@@ -87,7 +87,7 @@ impl SyntaxFile {
         self
             .inner
             .iter()
-            .find(|(_, s)| s.extension == extension)
+            .find(|(_, s)| s.extensions.iter().any(|e| e == extension))
             .map(|(n, _)| n.as_str())
     }
 

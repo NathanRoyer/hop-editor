@@ -7,7 +7,7 @@
 # - string format (%d, {})
 
 [rust]
-extension = "rs"
+extensions = ['rs']
 strings-normal = [
     { start = '"', stop = '"', escape = ['n', 'r', 't', '\', "\n"], multi-line = true, strfmt-braces = true },
     { start = "'", stop = "'", escape = ['n', 'r', 't', '\'], single-char = true },
@@ -36,7 +36,7 @@ keywords-weak = ['self', 'let', 'static', 'for', 'while', 'if', 'else', 'match',
 call-syms = ['(', '!', '<']
 
 [toml]
-extension = "toml"
+extensions = ['toml']
 strings-normal = [
     { start = "'", stop = "'", escape = [] },
     { start = "'''", stop = "'''", escape = [], multi-line = true },
@@ -57,7 +57,7 @@ keywords-weak = []
 call-syms = [']']
 
 [markdown]
-extension = "md"
+extensions = ['md']
 comment-prefix = []
 
 strings-normal = [
@@ -88,7 +88,7 @@ remap.iupper = 'ilower'
 remap.symbol = 'kw-strong'
 
 [json]
-extension = "json"
+extensions = ['json']
 comment-prefix = []
 strings-normal = [ { start = '"', stop = '"', escape = ['n', 'r', 't', '\'] } ]
 multi-line-comments = []
@@ -101,3 +101,88 @@ keywords-strong = ['true', 'false']
 keywords-basic = []
 keywords-weak = []
 call-syms = []
+
+[c-cpp]
+# best effort, help wanted!
+extensions = ['c', 'h', 'cpp', 'hpp']
+strings-normal = [
+    { start = '"', stop = '"', escape = ['n', 'r', 't', '\', "\n"], multi-line = true, strfmt-braces = true },
+    { start = "'", stop = "'", escape = ['n', 'r', 't', '\'], single-char = true }
+]
+
+multi-line-comments = [
+    { start = '/*', stop = '*/', escape = [], multi-line = true },
+]
+
+comment-prefix = ['//']
+
+symbols = [
+    '&&', '&', '|', '->', '-', '+', '/', '*', '::', ';', '(', ')', '[', ']', '{', '}',
+    '!', '%', '.', ',', '++', '--', '+=', '-=', '/=', '*=', '|=', '^', '^=', '&=',
+    '<', '>', '=', '?'
+]
+
+number-glue = ['.']
+numbers = ['dec', 'hex', 'oct', 'bin']
+keywords-strong = ['const', 'true', 'false', 'break', 'continue', 'return']
+keywords-basic = ['#define', '#include', '#ifdef', '#ifndef', '#endif', 'struct', 'enum']
+keywords-weak = ['this', 'for', 'while', 'if', 'else']
+call-syms = ['(', '<']
+
+[python]
+# best effort, help wanted!
+extensions = ['py']
+strings-normal = [
+    { start = 'f"""', stop = '"""', escape = ['n', 'r', 't', '\', "\n"], multi-line = true, strfmt-braces = true },
+    { start = "f'''", stop = "'''", escape = ['n', 'r', 't', '\', "\n"], multi-line = true, strfmt-braces = true },
+    { start = '"""', stop = '"""', escape = ['n', 'r', 't', '\', "\n"], multi-line = true },
+    { start = "'''", stop = "'''", escape = ['n', 'r', 't', '\', "\n"], multi-line = true },
+    { start = 'r"""', stop = '"""', escape = [], multi-line = true },
+    { start = "r'''", stop = "'''", escape = [], multi-line = true },
+    { start = 'f"', stop = '"', escape = ['n', 'r', 't', '\', "\n"], strfmt-braces = true },
+    { start = "f'", stop = "'", escape = ['n', 'r', 't', '\', "\n"], strfmt-braces = true },
+    { start = '"', stop = '"', escape = ['n', 'r', 't', '\', "\n"] },
+    { start = "'", stop = "'", escape = ['n', 'r', 't', '\', "\n"] },
+    { start = 'r"', stop = '"', escape = [] },
+    { start = "r'", stop = "'", escape = [] }
+]
+
+multi-line-comments = []
+comment-prefix = ['#']
+
+symbols = [
+    '&&', '&', '|', '-', '+', '/', '*', ';', '(', ')', '[', ']', '{', '}',
+    '%', '.', ',', '+=', '-=', '/=', '*=', '|=', '^', '^=', '&=', '<', '>',
+    '=', '?', ':'
+]
+
+number-glue = ['.']
+numbers = ['dec', 'hex', 'oct', 'bin']
+keywords-strong = ['True', 'False', 'break', 'continue', 'return']
+keywords-basic = ['class', 'import', 'from', 'pass']
+keywords-weak = ['self', 'for', 'while', 'and', 'not', 'if', 'elif', 'else', 'match', 'def']
+call-syms = ['(']
+
+[shell]
+# best effort, help wanted!
+extensions = ['sh', 'bash']
+strings-normal = [
+    { start = '"', stop = '"', escape = ['n', 'r', 't', '\', "\n"] },
+    { start = "'", stop = "'", escape = ['n', 'r', 't', '\', "\n"] }
+]
+
+multi-line-comments = []
+comment-prefix = ['#']
+
+symbols = [
+    '&&', '&', '|', '-', '+', '/', '*', ';', '(', ')', '[', ']', '{', '}',
+    '%', '.', ',', '+=', '-=', '/=', '*=', '|=', '^', '^=', '&=', '<', '>',
+    '=', '?', ':', '`'
+]
+
+number-glue = ['.']
+numbers = ['dec', 'hex', 'oct', 'bin']
+keywords-strong = ['break', 'continue', 'return', 'exit', 'sudo']
+keywords-basic = ['$0', '$1', '$2', '$3', '$4', '$5', '$6']
+keywords-weak = ['then', 'for', 'while', 'if', 'fi', 'case', 'esac', 'do', 'done']
+call-syms = ['(']
