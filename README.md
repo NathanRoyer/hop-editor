@@ -63,8 +63,8 @@ If this is a problem for you, try setting `internal-clipboard` to `true` in your
 
 ## Configuration
 
-The path of the configuration file can be specified with the `-c` argument.
-By default, this path is `~/.config/hop.toml`.
+The path of the configuration file can be specified with the `HOP_CONFIG` environment variable.
+By default, this path is `~/.config/hop/config.toml`.
 
 Please check out the default config file in `assets` from the git repo.
 There you will also find a default syntax file.
