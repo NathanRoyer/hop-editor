@@ -21,6 +21,8 @@ const SEARCH_PROMPT: &str = "Please input the text to look for:";
 const DEFAULT_CONFIG: &str = include_str!("../assets/config.toml");
 const DEFAULT_SYNTAX: &str = include_str!("../assets/syntax.toml");
 
+const TMP_CLIPBOARD_PATH: &str = "/tmp/hop-clipboard.txt";
+
 // when refreshing the left panel, this indicates
 // we're only doing it to refresh the cursor list.
 // in the future, this could be optimized easily.
@@ -605,4 +607,54 @@ fn main() -> Result<(), &'static str> {
     app.interface.close();
 
     Ok(())
+}
+
+fn try_clipboard_command(copy: bool) {
+    use std::process::Command;
+    let mut success = false;
+
+    let maybe_file = match copy {
+        true => fs::File::open(TMP_CLIPBOARD_PATH),
+        false => fs::File::create(TMP_CLIPBOARD_PATH),
+    };
+
+    let Ok(file) = maybe_file else {
+        alert!("failed to open clipboard-file ({TMP_CLIPBOARD_PATH})");
+        return;
+    };
+
+    let candidates: [(&str, &[&str]); 3] = match copy {
+        true => [("wl-copy", &[]), ("xclip", &[]), ("pbcopy", &[])],
+        false => [("wl-paste", &["-n"]), ("xclip", &["-o"]), ("pbpaste", &[])],
+    };
+
+    for (command, args) in candidates {
+        let buffer = file.try_clone().unwrap();
+        let mut cmd = Command::new(command);
+
+        match copy {
+            true => cmd.stdin(buffer).args(args),
+            false => cmd.stdout(buffer).args(args),
+        };
+
+        let Ok(mut child) = cmd.spawn() else {
+            continue;
+        };
+
+        let Ok(exit) = child.wait() else {
+            continue;
+        };
+
+        if exit.success() {
+            success = true;
+            break;
+        }
+    }
+
+    if !success {
+        let ln1 = "failed to use wl-clipboard, xclip or macOS equivalents.";
+        let ln2 = "please make sure at least one of these works.";
+        let ln3 = "alternatively, set `internal-clipboard` to `true` in config.";
+        alert!("{ln1}\n{ln2}\n{ln3}");
+    }
 }

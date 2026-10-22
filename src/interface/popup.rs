@@ -1,3 +1,5 @@
+use crate::{TMP_CLIPBOARD_PATH, try_clipboard_command};
+use std::fs::read_to_string;
 use super::*;
 
 fn popup(text: String) -> u16 {
@@ -100,28 +102,45 @@ pub fn _prompt(text: String) -> Option<String> {
         let _ = stdout.flush();
 
         match read().unwrap() {
-            Event::Key(e) if !e.is_release() => match e.code {
-                KeyCode::Enter => break true,
-                KeyCode::Esc => break false,
+            Event::Key(e) if !e.is_release() => {
+                let ctrl = e.modifiers.contains(KeyModifiers::CONTROL);
 
-                KeyCode::Right if !suffix.is_empty() => {
-                    prefix.push(suffix.remove(0));
-                },
-                KeyCode::Left => {
-                    prefix.pop().map(|c| suffix.insert(0, c));
-                },
-                KeyCode::Backspace => _ = prefix.pop(),
-                KeyCode::Delete if !suffix.is_empty() => _ = suffix.remove(0),
-                KeyCode::Char(c) => prefix.push(c),
-                KeyCode::Home => {
-                    suffix.insert_str(0, &prefix);
-                    prefix.clear();
-                },
-                KeyCode::End => {
-                    prefix += &suffix;
-                    suffix.clear();
-                },
-                _other => (),
+                match (e.code, ctrl) {
+                    (KeyCode::Enter, false) => break true,
+                    (KeyCode::Esc, false) => break false,
+
+                    (KeyCode::Right, false) if !suffix.is_empty() => {
+                        prefix.push(suffix.remove(0));
+                    },
+                    (KeyCode::Left, false) => {
+                        prefix.pop().map(|c| suffix.insert(0, c));
+                    },
+                    (KeyCode::Backspace, false) => _ = prefix.pop(),
+                    (KeyCode::Delete, false) if !suffix.is_empty() => _ = suffix.remove(0),
+                    (KeyCode::Char(c), false) => prefix.push(c),
+                    (KeyCode::Home, false) => {
+                        suffix.insert_str(0, &prefix);
+                        prefix.clear();
+                    },
+                    (KeyCode::End, false) => {
+                        prefix += &suffix;
+                        suffix.clear();
+                    },
+
+                    (KeyCode::Char('v'), true) => {
+                        // paste
+                        try_clipboard_command(false);
+
+                        let Ok(contents) = read_to_string(TMP_CLIPBOARD_PATH) else {
+                            alert!("failed to read clipboard-file ({TMP_CLIPBOARD_PATH})");
+                            continue;
+                        };
+
+                        prefix += &contents;
+                    },
+
+                    _other => (),
+                }
             },
             _other => (),
         }
