@@ -31,12 +31,19 @@ pub enum UserInput {
     PanelResize(bool),
     Scroll(isize),
     Resize(u16, u16),
-    HorizontalJump(isize, bool),
-    VerticalJump(isize, bool),
+    HorizontalJump(Jump),
+    VerticalJump(Jump),
     ContextMenu(Location, u16, u16),
     AutoSelect,
     SelectAll,
     NoOp,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Jump {
+    pub word_wise: bool,
+    pub forward: bool,
+    pub select: bool,
 }
 
 pub enum ResizeEvent {
@@ -102,10 +109,16 @@ impl Interface {
             Event::Key(e) => {
                 let shift = e.modifiers.contains(KeyModifiers::SHIFT);
 
+                let jump = |forward, word_wise, select| Jump {
+                    forward,
+                    word_wise,
+                    select,
+                };
+
                 if e.modifiers.contains(KeyModifiers::CONTROL) {
                     match e.code {
-                        KeyCode::Right => UserInput::HorizontalJump(10, shift),
-                        KeyCode::Left => UserInput::HorizontalJump(-10, shift),
+                        KeyCode::Right => UserInput::HorizontalJump(jump(true, true, shift)),
+                        KeyCode::Left => UserInput::HorizontalJump(jump(false, true, shift)),
                         KeyCode::Char('d') => UserInput::AutoSelect,
                         KeyCode::Char('a') => UserInput::SelectAll,
                         KeyCode::Char('w') => UserInput::CloseTab(None),
@@ -129,10 +142,10 @@ impl Interface {
                         KeyCode::PageUp if shift => UserInput::NextTab(false),
                         KeyCode::PageDown => UserInput::Scroll(code_height),
                         KeyCode::PageUp => UserInput::Scroll(-code_height),
-                        KeyCode::Right => UserInput::HorizontalJump(1, shift),
-                        KeyCode::Left => UserInput::HorizontalJump(-1, shift),
-                        KeyCode::Down => UserInput::VerticalJump(1, shift),
-                        KeyCode::Up => UserInput::VerticalJump(-1, shift),
+                        KeyCode::Right => UserInput::HorizontalJump(jump(true, false, shift)),
+                        KeyCode::Left => UserInput::HorizontalJump(jump(false, false, shift)),
+                        KeyCode::Down => UserInput::VerticalJump(jump(true, false, shift)),
+                        KeyCode::Up => UserInput::VerticalJump(jump(false, false, shift)),
                         KeyCode::Backspace => UserInput::Backspace(false),
                         KeyCode::Delete => UserInput::Backspace(true),
                         KeyCode::Enter => UserInput::CarriageReturn,

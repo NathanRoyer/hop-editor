@@ -1,3 +1,4 @@
+use crate::interface::input::Jump;
 use super::*;
 
 impl Tab {
@@ -76,7 +77,13 @@ impl Tab {
             self.prepare_deletion();
 
             if forward {
-                self.horizontal_jump(1, false);
+                let jump = Jump {
+                    forward: true,
+                    word_wise: false,
+                    select: false,
+                };
+
+                self.horizontal_jump(jump);
             }
 
             for c in 0..self.cursors.len() {

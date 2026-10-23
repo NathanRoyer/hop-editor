@@ -1,5 +1,5 @@
 use interface::colored_text::{ColoredText, Part as TextPart, Selection};
-use interface::input::{UserInput, ResizeEvent, Location};
+use interface::input::{UserInput, ResizeEvent, Location, Jump};
 use interface::menu::{MenuItem, context_menu};
 use interface::{Interface, restore_term};
 use forest::{Forest, FileKey};
@@ -156,7 +156,7 @@ impl Application {
                 self.update_left(true);
                 return;
             } else if tab.has_selections() {
-                tab.horizontal_jump(0, false);
+                tab.unselect(None);
                 return;
             }
         }
@@ -238,31 +238,36 @@ impl Application {
         self.update_left(FOR_CURSORS);
     }
 
-    fn horizontal_jump(&mut self, delta: isize, shift: bool) {
+    fn horizontal_jump(&mut self, jump: Jump) {
         if let Some(i) = self.tree_select.as_mut() {
-            match delta < 0 {
-                true => self.forest.leave_dir(i),
-                false => self.forest.enter_dir(i),
+            match jump.forward {
+                false => self.forest.leave_dir(i),
+                true => self.forest.enter_dir(i),
             }
 
             self.update_left(true);
         } else {
             let tab = self.tabs.current();
-            tab.horizontal_jump(delta, shift);
+            tab.horizontal_jump(jump);
             self.ensure_cursor_visible();
             self.update_left(FOR_CURSORS);
         }
     }
 
-    fn vertical_jump(&mut self, delta: isize, shift: bool) {
+    fn vertical_jump(&mut self, jump: Jump) {
         if let Some(i) = self.tree_select.as_mut() {
-            if !shift {
+            if !jump.select {
+                let delta = match jump.forward {
+                    true => 1,
+                    false => -1,
+                };
+
                 self.forest.up_down(i, delta);
                 self.update_left(true);
             }
         } else {
             let tab = self.tabs.current();
-            tab.vertical_jump(delta, shift);
+            tab.vertical_jump(jump);
             self.ensure_cursor_visible();
             self.update_left(FOR_CURSORS);
         }
@@ -477,8 +482,8 @@ impl Application {
                 self.update_left(true);
             },
             UserInput::CarriageReturn => self.carriage_return(),
-            UserInput::HorizontalJump(d, s) => self.horizontal_jump(d, s),
-            UserInput::VerticalJump(d, s) => self.vertical_jump(d, s),
+            UserInput::HorizontalJump(jump) => self.horizontal_jump(jump),
+            UserInput::VerticalJump(jump) => self.vertical_jump(jump),
             UserInput::Resize(w, h) => self.interface.resize(w, h),
             UserInput::Scroll(delta) => self.scroll(delta),
             UserInput::Insert(c) => self.insert(c),

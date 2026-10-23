@@ -1,8 +1,20 @@
+use crate::interface::input::Jump;
 use super::*;
 
+#[derive(Debug, Default, Copy, Clone)]
+struct TokBoundaries {
+    word_char_offset: usize,
+    word_chars: usize,
+}
+
 impl Tab {
-    pub fn vertical_jump(&mut self, delta: isize, select: bool) {
-        self.unselect_if_not(select, None);
+    pub fn vertical_jump(&mut self, jump: Jump) {
+        self.unselect_if_not(jump.select, None);
+
+        let delta = match jump.forward {
+            true => 1,
+            false => -1,
+        };
 
         for c in 0..self.cursors.len() {
             // to-do: check if we're not going back and
@@ -19,7 +31,7 @@ impl Tab {
                 }
             }
 
-            if select {
+            if jump.select {
                 let cursor = &mut self.cursors[c];
                 cursor.sel_x += cx_backup - cursor.x as isize;
                 cursor.sel_y -= delta;
@@ -91,11 +103,41 @@ impl Tab {
         self.lines[y].must_draw = true;
     }
 
-    pub fn horizontal_jump(&mut self, delta: isize, select: bool) {
-        self.unselect_if_not(select, Some(delta < 0));
+    pub fn horizontal_jump(&mut self, jump: Jump) {
+        self.unselect_if_not(jump.select, Some(!jump.forward));
 
         for c in 0..self.cursors.len() {
-            self.hor_jump_cursor(c, delta, select);
+            let delta;
+
+            if jump.word_wise {
+                let mut boundaries = self.find_word_boundaries(c);
+                let mut cursor = &mut self.cursors[c];
+
+                let mut chars_end = boundaries.word_char_offset + boundaries.word_chars;
+                let mut cursor_offset = cursor.x - boundaries.word_char_offset;
+
+                if !jump.forward && cursor_offset == 0 {
+                    cursor.x = cursor.x.saturating_sub(1);
+
+                    boundaries = self.find_word_boundaries(c);
+                    cursor = &mut self.cursors[c];
+
+                    chars_end = boundaries.word_char_offset + boundaries.word_chars;
+                    cursor_offset = cursor.x - boundaries.word_char_offset;
+                }
+
+                delta = match jump.forward {
+                    true => (chars_end - cursor.x) as isize,
+                    false => -(cursor_offset as isize),
+                };
+            } else {
+                delta = match jump.forward {
+                    true => 1,
+                    false => -1,
+                };
+            }
+
+            self.hor_jump_cursor(c, delta, jump.select);
         }
 
         self.check_cursors();
@@ -192,10 +234,12 @@ impl Tab {
     }
 
     fn unselect_if_not(&mut self, select: bool, jump_dir: Option<bool>) {
-        if select {
-            return;
+        if !select {
+            self.unselect(jump_dir);
         }
+    }
 
+    pub fn unselect(&mut self, jump_dir: Option<bool>) {
         for cursor in self.cursors.iter_mut() {
             if !cursor.selects() {
                 continue;
@@ -207,8 +251,8 @@ impl Tab {
                 }
             }
 
-            if let Some(dir) = jump_dir {
-                cursor.sel_jump(dir);
+            if let Some(backwards) = jump_dir {
+                cursor.sel_jump(backwards);
             }
 
             cursor.sel_x = 0;
@@ -217,64 +261,81 @@ impl Tab {
     }
 
     pub fn auto_select(&mut self) {
-        self.highlight();
-
         let c = self.latest_cursor();
-        let cursor = &mut self.cursors[c];
 
-        if cursor.selects() {
+        if self.cursors[c].selects() {
             return self.find_next_occurence(c);
         }
 
-        let line = &mut self.lines[cursor.y];
-        let mut chars = 0;
+        let boundaries = self.find_word_boundaries(c);
+        let cursor = &mut self.cursors[c];
+
+        let chars_end = boundaries.word_chars + boundaries.word_char_offset;
+
+        cursor.sel_y = 0;
+        cursor.sel_x = -(boundaries.word_chars as isize);
+        cursor.x = chars_end;
+
+        self.lines[cursor.y].must_draw = true;
+    }
+
+    fn find_word_boundaries(&mut self, c: usize) -> TokBoundaries {
+        // is this necessary?
+        self.highlight();
+
+        let cursor = &self.cursors[c];
+        let line = &self.lines[cursor.y];
+
+        let mut boundaries = TokBoundaries::default();
 
         if self.syntax.is_some() {
-            let mut proc_chars = 0;
-            let mut offset = 0;
+            let mut byte_offset = 0;
 
             for range in &line.ranges {
-                let end = offset + range.len;
-                let slice = &line.buffer[offset..end];
-                chars = slice.chars().count();
-                let next = proc_chars + chars;
+                let end = byte_offset + range.len;
+                let slice = &line.buffer[byte_offset..end];
+
+                boundaries.word_chars = slice.chars().count();
+                let next = boundaries.word_char_offset + boundaries.word_chars;
 
                 if cursor.x < next {
-                    cursor.x = next;
                     break;
                 }
 
-                proc_chars = next;
-                offset = end;
+                boundaries.word_char_offset = next;
+                byte_offset = end;
+
+                // in case the cursor is at EOL,
+                // set the token len to zero
+                boundaries.word_chars = 0;
             }
         } else {
             let wspace = &[' ', '\t'];
-            let c_bytes = line.len_until(cursor.x);
+            let cursor_byte_offset = line.len_until(cursor.x);
 
-            let before = &line.buffer[..c_bytes];
+            let before = &line.buffer[..cursor_byte_offset];
+            let after = &line.buffer[cursor_byte_offset..];
+
             let pre = match before.rsplit_once(wspace) {
                 Some((_, l_side)) => l_side.len(),
                 None => before.len(),
             };
 
-            let after = &line.buffer[c_bytes..];
             let post = match after.split_once(wspace) {
                 Some((r_side, _)) => r_side.len(),
                 None => after.len(),
             };
 
-            let start = c_bytes - pre;
-            let end = c_bytes + post;
-            let word_range = start..end;
+            let start = cursor_byte_offset - pre;
+            let end = cursor_byte_offset + post;
 
             let char_count = |s: &str| s.chars().count();
-            chars = char_count(&line.buffer[word_range]);
-            cursor.x = char_count(&line.buffer[..end]);
+
+            boundaries.word_char_offset = char_count(&line.buffer[..start]);
+            boundaries.word_chars = char_count(&line.buffer[start..end]);
         }
 
-        cursor.sel_y = 0;
-        cursor.sel_x = -(chars as isize);
-        line.must_draw = true;
+        boundaries
     }
 
     fn matches(&self, text: &str, x: usize, mut y: usize) -> bool {
