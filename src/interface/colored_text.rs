@@ -146,7 +146,7 @@ impl fmt::Display for ColoredText<'_> {
         }
 
         write!(f, "{}", SetBackgroundColor(default_bg_color()))?;
-        if self.cursors.contains(&byte_offset) & !overflow {
+        if cursor.is_some() & !overflow {
             write_cursor(f, ' ')?;
         }
 

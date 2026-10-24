@@ -47,8 +47,9 @@ impl Tab {
         line.buffer.insert_str(offset, text);
         line.set_dirty();
 
+        let num_chars = text.chars().count();
+        self.add_to_cursors(c, false, num_chars);
         self.check_line_highlighting(cursor.y);
-        self.add_to_cursors(c, false, text.len());
     }
 
     fn line_feed(&mut self, c: usize, mut eol_cr: bool) {
