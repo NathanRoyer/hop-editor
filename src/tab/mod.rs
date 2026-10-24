@@ -6,6 +6,7 @@ use std::{fs, cmp};
 use crate::interface::colored_text::{Part as TextPart, Selection};
 use crate::syntax::{Range, SyntaxFile, SyntaxConfig, LineContext};
 use crate::{alert, confirm, prompt};
+use crate::config::trim_blank_lines;
 use crate::forest::FileKey;
 
 use history::History;
@@ -84,6 +85,10 @@ impl Cursor {
     fn touches(&self, y: usize) -> bool {
         let diff = (y as isize) - (self.y as isize);
         self.sel_y != 0 && diff == self.sel_y
+    }
+
+    fn affects(&self, y: usize) -> bool {
+        self.y == y || self.covers(y) || self.touches(y)
     }
 
     fn selects(&self) -> bool {
@@ -236,8 +241,26 @@ impl Tab {
     fn rebuild(&mut self) {
         self.tmp_buf.clear();
 
-        for line in &self.lines {
-            self.tmp_buf += &line.buffer;
+        for (y, line) in self.lines.iter_mut().enumerate() {
+            let mut empty_line = false;
+
+            if trim_blank_lines() {
+                empty_line = line.buffer.trim_start().is_empty();
+
+                let no_cursor = self
+                    .cursors
+                    .iter()
+                    .all(|c| !c.affects(y));
+
+                if empty_line & no_cursor {
+                    line.buffer.clear();
+                    line.set_dirty();
+                }
+            }
+
+            if !empty_line {
+                self.tmp_buf += &line.buffer;
+            }
 
             if line.eol_cr {
                 self.tmp_buf.push('\r');

@@ -246,7 +246,7 @@ impl Tab {
             }
 
             for (i, line) in self.lines.iter_mut().enumerate() {
-                if cursor.y == i || cursor.covers(i) || cursor.touches(i) {
+                if cursor.affects(i) {
                     line.must_draw = true;
                 }
             }

@@ -1,3 +1,4 @@
+use crate::config::trim_blank_lines;
 use std::str::from_utf8;
 use std::io::Write;
 use super::*;
@@ -124,7 +125,11 @@ impl Tab {
 
         let c = self.latest_cursor();
         let index = self.cursors[c].y;
-        let line = &self.lines[index];
+        let line = &mut self.lines[index];
+
+        let blank_line = line.buffer
+            .trim_start()
+            .is_empty();
 
         let crlf_i = line.eol_cr as usize;
         let crlf = ["\n", "\r\n"][crlf_i];
@@ -136,6 +141,10 @@ impl Tab {
         let _ = write!(buf.as_mut_slice(), "{crlf}{indent}");
         let text = from_utf8(&buf).unwrap();
         let len = text.find('-').unwrap_or(CAP);
+
+        if blank_line && trim_blank_lines() {
+            line.buffer.clear();
+        }
 
         self.insert_text(&text[..len]);
     }

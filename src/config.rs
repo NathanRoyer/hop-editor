@@ -25,6 +25,7 @@ struct General {
     syntax_file: Option<String>,
     hide_folders: Vec<String>,
     internal_clipboard: bool,
+    trim_blank_lines: bool,
     hover: HexColor,
     tree_width: u16,
     max_cursor_lines: u16,
@@ -127,6 +128,10 @@ pub fn hide_folder(folder: &str) -> bool {
 
 pub fn internal_clipboard() -> bool {
     config().general.internal_clipboard
+}
+
+pub fn trim_blank_lines() -> bool {
+    config().general.trim_blank_lines
 }
 
 pub fn ansi_color(name: &str) -> Color {

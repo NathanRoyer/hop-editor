@@ -3,6 +3,8 @@
 # background = '#111'
 
 internal-clipboard = false
+trim-blank-lines = true
+
 hide-folders = ['.git', 'target']
 max-cursor-lines = 20
 tree-width = 30
