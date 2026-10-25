@@ -72,6 +72,8 @@ There you will also find a default syntax file.
 ### TOML Contents
 
 - `internal-clipboard`: set to `true` if you don't want to use the system-wide clipboard
+- `autoclose-blocks`: set to `true` if you want `( { [` to be completed with their respective `] } )`
+- `trim-blank-lines`: set to `true` if you want to blank lines to be cleared (those containing only whitespace characters)
 - `max-cursor-lines`: max number of lines that the cursor list can take in left panel
 - `hide-folders`: list of folders to hide in the file tree
 - `syntax-file`: path to a syntax file for syntax highligting
