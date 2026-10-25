@@ -34,6 +34,7 @@ impl Tab {
         self.copy();
         self.prepare_deletion();
         self.erase_selection();
+        self.modified = true;
     }
 
     pub fn paste(&mut self) {

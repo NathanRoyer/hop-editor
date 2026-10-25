@@ -394,8 +394,8 @@ impl Application {
                 self.update_left(true);
             },
             UserInput::ContextMenu(Location::Tab(col), x, y) => self.tab_menu(col, x, y),
-            UserInput::CodeSeek(x, y, push_c) => {
-                tab.seek(x, y, push_c);
+            UserInput::CodeSeek(x, y, append_cursor) => {
+                tab.seek(x, y, append_cursor);
                 let _tree_select = self.tree_select.take();
                 // self.update_left(_tree_select.is_some());
                 self.update_left(FOR_CURSORS);

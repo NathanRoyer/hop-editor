@@ -1,10 +1,8 @@
 use crate::interface::input::Jump;
 use super::*;
 
-#[derive(Debug, Default, Copy, Clone)]
-pub(super) struct TokBoundaries {
-    word_char_offset: usize,
-    word_chars: usize,
+fn is_identifier_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
 }
 
 impl Tab {
@@ -107,39 +105,16 @@ impl Tab {
     pub fn horizontal_jump(&mut self, jump: Jump) {
         self.unselect_if_not(jump.select, Some(!jump.forward));
 
-        // necessary for find_word_boundaries()
-        self.highlight();
-
         for c in 0..self.cursors.len() {
-            let delta;
+            let distance = match jump.word_wise {
+                true => self.fast_target_distance(c, jump.forward),
+                false => 1,
+            };
 
-            if jump.word_wise {
-                let mut boundaries = self.find_word_boundaries(c);
-                let mut cursor = &mut self.cursors[c];
-
-                let mut chars_end = boundaries.word_char_offset + boundaries.word_chars;
-                let mut cursor_offset = cursor.x - boundaries.word_char_offset;
-
-                if !jump.forward && cursor_offset == 0 {
-                    cursor.x = cursor.x.saturating_sub(1);
-
-                    boundaries = self.find_word_boundaries(c);
-                    cursor = &mut self.cursors[c];
-
-                    chars_end = boundaries.word_char_offset + boundaries.word_chars;
-                    cursor_offset = cursor.x - boundaries.word_char_offset;
-                }
-
-                delta = match jump.forward {
-                    true => (chars_end - cursor.x) as isize,
-                    false => -(cursor_offset as isize),
-                };
-            } else {
-                delta = match jump.forward {
-                    true => 1,
-                    false => -1,
-                };
-            }
+            let delta = match jump.forward {
+                true => distance as isize,
+                false => -(distance as isize),
+            };
 
             self.hor_jump_cursor(c, delta, jump.select);
         }
@@ -271,76 +246,68 @@ impl Tab {
             return self.find_next_occurence(c);
         }
 
-        // necessary for find_word_boundaries()
-        self.highlight();
-
-        let boundaries = self.find_word_boundaries(c);
         let cursor = &mut self.cursors[c];
+        let line = &self.lines[cursor.y];
+        let cursor_offset = line.len_until(cursor.x);
 
-        let chars_end = boundaries.word_chars + boundaries.word_char_offset;
+        let mut following = 1;
+        let mut preceding = 0;
+
+        let mut post_cursor_iter = line
+            .buffer
+            .chars()
+            .map(is_identifier_char)
+            .skip(cursor.x);
+
+        let Some(on_identifier) = post_cursor_iter.next() else {
+            // no char at cursor = no auto-select
+            return;
+        };
+
+        while post_cursor_iter.next() == Some(on_identifier) {
+            following += 1;
+        }
+
+        let mut pre_cursor_iter = line
+            .buffer[..cursor_offset]
+            .chars()
+            .map(is_identifier_char);
+
+        while pre_cursor_iter.next_back() == Some(on_identifier) {
+            preceding += 1;
+        }
 
         cursor.sel_y = 0;
-        cursor.sel_x = -(boundaries.word_chars as isize);
-        cursor.x = chars_end;
+        cursor.sel_x = -(preceding + following);
+        cursor.x += following as usize;
 
         self.lines[cursor.y].must_draw = true;
     }
 
-    // requires syntax data to be up to date
-    pub(super) fn find_word_boundaries(&mut self, c: usize) -> TokBoundaries {
+    fn fast_target_distance(&mut self, c: usize, forward: bool) -> usize {
         let cursor = &self.cursors[c];
         let line = &self.lines[cursor.y];
+        let cursor_offset = line.len_until(cursor.x);
 
-        let mut boundaries = TokBoundaries::default();
+        fn inner<I: Iterator<Item = char>>(iter: I) -> usize {
+            let mut iter = iter.map(is_identifier_char);
+            let mut distance = 1;
 
-        if self.syntax.is_some() {
-            let mut byte_offset = 0;
-
-            for range in &line.ranges {
-                let end = byte_offset + range.len;
-                let slice = &line.buffer[byte_offset..end];
-
-                boundaries.word_chars = slice.chars().count();
-                let next = boundaries.word_char_offset + boundaries.word_chars;
-
-                if cursor.x < next {
-                    break;
+            if let Some(ref_on_ident) = iter.next() {
+                while iter.next() == Some(ref_on_ident) {
+                    distance += 1;
                 }
-
-                boundaries.word_char_offset = next;
-                byte_offset = end;
-
-                // in case the cursor is at EOL,
-                // set the token len to zero
-                boundaries.word_chars = 0;
             }
-        } else {
-            let wspace = &[' ', '\t'];
-            let cursor_byte_offset = line.len_until(cursor.x);
 
-            let before = &line.buffer[..cursor_byte_offset];
-            let after = &line.buffer[cursor_byte_offset..];
-
-            let pre = match before.rsplit_once(wspace) {
-                Some((_, l_side)) => l_side.len(),
-                None => before.len(),
-            };
-
-            let post = match after.split_once(wspace) {
-                Some((r_side, _)) => r_side.len(),
-                None => after.len(),
-            };
-
-            let start = cursor_byte_offset - pre;
-            let end = cursor_byte_offset + post;
-
-            let char_count = |s: &str| s.chars().count();
-
-            boundaries.word_char_offset = char_count(&line.buffer[..start]);
-            boundaries.word_chars = char_count(&line.buffer[start..end]);
+            return distance;
         }
 
-        boundaries
+        let (pre, post) = line.buffer.split_at(cursor_offset);
+
+        match forward {
+            true => inner(post.chars()),
+            false => inner(pre.chars().rev()),
+        }
     }
 
     fn matches(&self, text: &str, x: usize, mut y: usize) -> bool {

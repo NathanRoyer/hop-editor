@@ -91,7 +91,7 @@ impl Tab {
         self.modified = true;
     }
 
-    pub fn erase_selection(&mut self) -> bool {
+    pub(super) fn erase_selection(&mut self) -> bool {
         if !self.has_selections() {
             return false;
         }
