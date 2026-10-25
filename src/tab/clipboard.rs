@@ -50,10 +50,9 @@ impl Tab {
         };
 
         let cursors = self.cursors.len();
+        let regions = text.split(DELIMITER).count();
 
-        if cursors > 1 {
-            let regions = text.split(DELIMITER).count();
-
+        if cursors > 1 && regions > 1 {
             if regions != cursors {
                 alert!("cannot paste: {regions} clipboard regions but {cursors} cursors");
                 return;
