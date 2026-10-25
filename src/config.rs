@@ -26,6 +26,7 @@ struct General {
     hide_folders: Vec<String>,
     internal_clipboard: bool,
     trim_blank_lines: bool,
+    autoclose_blocks: bool,
     hover: HexColor,
     tree_width: u16,
     max_cursor_lines: u16,
@@ -132,6 +133,10 @@ pub fn internal_clipboard() -> bool {
 
 pub fn trim_blank_lines() -> bool {
     config().general.trim_blank_lines
+}
+
+pub fn autoclose_blocks() -> bool {
+    config().general.autoclose_blocks
 }
 
 pub fn ansi_color(name: &str) -> Color {

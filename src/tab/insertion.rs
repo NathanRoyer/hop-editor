@@ -1,4 +1,6 @@
 use crate::config::trim_blank_lines;
+use crate::config::autoclose_blocks;
+use crate::interface::input::Jump;
 use std::str::from_utf8;
 use std::io::Write;
 use super::*;
@@ -109,10 +111,38 @@ impl Tab {
         self.modified = true;
     }
 
-    pub fn insert_char(&mut self, c: char) {
+    fn insert_char(&mut self, c: char) {
         let mut buf = [0u8; 4];
         let text = c.encode_utf8(&mut buf);
         self.insert_text(text);
+    }
+
+    pub fn smart_insert_char(&mut self, c: char) {
+        self.insert_char(c);
+
+        if !autoclose_blocks() {
+            return;
+        }
+
+        let special = [
+            ('(', ')'),
+            ('{', '}'),
+            ('[', ']'),
+        ];
+
+        for (open, close) in special {
+            if c != open { continue; }
+
+            let one_back = Jump {
+                select: false,
+                forward: false,
+                word_wise: false,
+            };
+
+            self.insert_char(close);
+            self.horizontal_jump(one_back);
+            break;
+        }
     }
 
     pub fn insert_tab(&mut self) {
@@ -122,31 +152,64 @@ impl Tab {
     }
 
     pub fn smart_carriage_return(&mut self) {
+        let blank = |s: &str| s.trim_start().is_empty();
+        let block_syms = ["()", "{}", "[]"];
         const CAP: usize = 64;
 
-        let c = self.latest_cursor();
-        let index = self.cursors[c].y;
-        let line = &mut self.lines[index];
+        self.prepare_insertion();
+        self.erase_selection();
 
-        let blank_line = line.buffer
-            .trim_start()
-            .is_empty();
+        let num_cursors = self.cursors.len();
+        let one_cursor = num_cursors == 1;
 
-        let crlf_i = line.eol_cr as usize;
-        let crlf = ["\n", "\r\n"][crlf_i];
+        for c in 0..num_cursors {
+            let cursor = self.cursors[c];
+            let line = &mut self.lines[cursor.y];
+            let blank_line = blank(&line.buffer);
 
-        let indent_len = indent_len(&line.buffer);
-        let indent = &line.buffer[..indent_len];
+            let must_open = {
+                let line_ends_with = |pair: &&str| line.buffer.ends_with(pair);
+                let end_with_block = block_syms.iter().any(line_ends_with);
+                let cursor_inbetween = line.len_chars() == (cursor.x + 1);
+                end_with_block && cursor_inbetween
+            };
 
-        let mut buf = [b'-'; CAP];
-        let _ = write!(buf.as_mut_slice(), "{crlf}{indent}");
-        let text = from_utf8(&buf).unwrap();
-        let len = text.find('-').unwrap_or(CAP);
+            let indent = {
+                let indent_len = indent_len(&line.buffer);
+                let cursor_offset = line.len_until(cursor.x);
+                let taken_len = usize::min(indent_len, cursor_offset);
+                &line.buffer[..taken_len]
+            };
 
-        if blank_line && trim_blank_lines() {
-            line.buffer.clear();
+            let crlf_i = line.eol_cr as usize;
+            let crlf = ["\n", "\r\n"][crlf_i];
+
+            let mut buf = [b'-'; CAP];
+            let text = {
+                let _ = write!(buf.as_mut_slice(), "{crlf}{indent}");
+                let utf8 = from_utf8(&buf).unwrap();
+                let len = utf8.find('-').unwrap_or(CAP);
+                &utf8[..len]
+            };
+
+            if trim_blank_lines() && blank_line && one_cursor {
+                self.backspace(c, cursor.x);
+            }
+
+            self.insert_text_cursor(c, text);
+
+            if must_open {
+                self.insert_text_cursor(c, text);
+
+                // we just inserted two newlines, this must be ok?
+                self.cursors[c].y -= 1;
+
+                let tab_string = take(&mut self.tab_string);
+                self.insert_text_cursor(c, &tab_string);
+                self.tab_string = tab_string;
+            }
         }
 
-        self.insert_text(&text[..len]);
+        self.modified = true;
     }
 }

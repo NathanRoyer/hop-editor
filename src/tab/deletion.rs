@@ -32,7 +32,7 @@ impl Tab {
         self.backspace_cursor(c, true, x_add as isize);
     }
 
-    fn backspace(&mut self, c: usize, mut num_chars: usize) {
+    pub fn backspace(&mut self, c: usize, mut num_chars: usize) {
         let simple_backspace = num_chars == 1;
 
         while self.cursors[c].x < num_chars {

@@ -232,7 +232,7 @@ impl Application {
 
         let tab = self.tabs.current();
         let no_mod = !*tab.modified();
-        tab.insert_char(c);
+        tab.smart_insert_char(c);
         self.ensure_cursor_visible();
         self.update_tab_list(no_mod);
         self.update_left(FOR_CURSORS);

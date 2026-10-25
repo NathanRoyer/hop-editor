@@ -4,6 +4,7 @@
 
 internal-clipboard = false
 trim-blank-lines = true
+autoclose-blocks = true
 
 hide-folders = ['.git', 'target']
 max-cursor-lines = 20
