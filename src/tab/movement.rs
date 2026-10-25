@@ -284,7 +284,8 @@ impl Tab {
         self.lines[cursor.y].must_draw = true;
     }
 
-    fn fast_target_distance(&mut self, c: usize, forward: bool) -> usize {
+    // used by Tab::backspace()
+    pub(super) fn fast_target_distance(&mut self, c: usize, forward: bool) -> usize {
         let cursor = &self.cursors[c];
         let line = &self.lines[cursor.y];
         let cursor_offset = line.len_until(cursor.x);

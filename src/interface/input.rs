@@ -131,6 +131,7 @@ impl Interface {
                         KeyCode::Right => UserInput::HorizontalJump(jump(true, true, shift)),
                         KeyCode::Left => UserInput::HorizontalJump(jump(false, true, shift)),
                         KeyCode::Backspace => UserInput::Backspace(backspace(false, true)),
+                        KeyCode::Char('h') => UserInput::Backspace(backspace(false, true)),
                         KeyCode::Delete => UserInput::Backspace(backspace(true, true)),
                         KeyCode::Char('d') => UserInput::AutoSelect,
                         KeyCode::Char('a') => UserInput::SelectAll,

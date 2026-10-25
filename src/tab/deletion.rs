@@ -78,13 +78,19 @@ impl Tab {
         // erase_selection() calls set_fully_dirty()
         if !self.erase_selection() {
             for c in 0..self.cursors.len() {
-                let _ = backspace.word_wise;
+                let mut distance = 1;
 
-                if backspace.forward {
-                    self.advance_cursor_once(c, false);
+                if backspace.word_wise {
+                    distance = self.fast_target_distance(c, backspace.forward);
                 }
 
-                self.backspace_cursor(c, 1);
+                if backspace.forward {
+                    for _ in 0..distance {
+                        self.advance_cursor_once(c, false);
+                    }
+                }
+
+                self.backspace_cursor(c, distance);
             }
         }
 
