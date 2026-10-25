@@ -301,12 +301,12 @@ impl Application {
         let mut ensure_cursor_visible = false;
         let mut update_tab_list = !*tab.modified();
 
-        // all of these should update tab list
+        // only those could update tab styling (it could become modified)
         match event {
             UserInput::Paste => tab.paste(),
             UserInput::Cut => tab.cut(),
             UserInput::InsertTab => tab.insert_tab(),
-            UserInput::Backspace(forward) => tab.backspace_once(forward),
+            UserInput::Backspace(bs) => tab.backspace(bs),
             _ => update_tab_list = false,
         }
 

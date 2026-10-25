@@ -32,6 +32,7 @@ impl Tab {
 
     pub fn cut(&mut self) {
         self.copy();
+        self.prepare_deletion();
         self.erase_selection();
     }
 

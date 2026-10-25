@@ -2,7 +2,7 @@ use crate::interface::input::Jump;
 use super::*;
 
 #[derive(Debug, Default, Copy, Clone)]
-struct TokBoundaries {
+pub(super) struct TokBoundaries {
     word_char_offset: usize,
     word_chars: usize,
 }
@@ -59,7 +59,8 @@ impl Tab {
         }
     }
 
-    fn advance_cursor_once(&mut self, c: usize, select: bool) {
+    // used by Tab::backspace()
+    pub(super) fn advance_cursor_once(&mut self, c: usize, select: bool) {
         let cursor = &mut self.cursors[c];
 
         let line = &self.lines[cursor.y];
@@ -105,6 +106,9 @@ impl Tab {
 
     pub fn horizontal_jump(&mut self, jump: Jump) {
         self.unselect_if_not(jump.select, Some(!jump.forward));
+
+        // necessary for find_word_boundaries()
+        self.highlight();
 
         for c in 0..self.cursors.len() {
             let delta;
@@ -267,6 +271,9 @@ impl Tab {
             return self.find_next_occurence(c);
         }
 
+        // necessary for find_word_boundaries()
+        self.highlight();
+
         let boundaries = self.find_word_boundaries(c);
         let cursor = &mut self.cursors[c];
 
@@ -279,10 +286,8 @@ impl Tab {
         self.lines[cursor.y].must_draw = true;
     }
 
-    fn find_word_boundaries(&mut self, c: usize) -> TokBoundaries {
-        // is this necessary?
-        self.highlight();
-
+    // requires syntax data to be up to date
+    pub(super) fn find_word_boundaries(&mut self, c: usize) -> TokBoundaries {
         let cursor = &self.cursors[c];
         let line = &self.lines[cursor.y];
 

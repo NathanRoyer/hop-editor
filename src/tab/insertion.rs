@@ -193,7 +193,7 @@ impl Tab {
             };
 
             if trim_blank_lines() && blank_line && one_cursor {
-                self.backspace(c, cursor.x);
+                self.backspace_cursor(c, cursor.x);
             }
 
             self.insert_text_cursor(c, text);

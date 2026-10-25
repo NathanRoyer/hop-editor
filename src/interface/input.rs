@@ -19,7 +19,7 @@ pub enum UserInput {
     CursorHover(u16),
     ClearHover,
     TabClick(u16),
-    Backspace(bool),
+    Backspace(Backspace),
     Find,
     Paste,
     Copy,
@@ -44,6 +44,12 @@ pub struct Jump {
     pub word_wise: bool,
     pub forward: bool,
     pub select: bool,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Backspace {
+    pub word_wise: bool,
+    pub forward: bool,
 }
 
 pub enum ResizeEvent {
@@ -115,10 +121,17 @@ impl Interface {
                     select,
                 };
 
+                let backspace = |forward, word_wise| Backspace {
+                    forward,
+                    word_wise,
+                };
+
                 if e.modifiers.contains(KeyModifiers::CONTROL) {
                     match e.code {
                         KeyCode::Right => UserInput::HorizontalJump(jump(true, true, shift)),
                         KeyCode::Left => UserInput::HorizontalJump(jump(false, true, shift)),
+                        KeyCode::Backspace => UserInput::Backspace(backspace(false, true)),
+                        KeyCode::Delete => UserInput::Backspace(backspace(true, true)),
                         KeyCode::Char('d') => UserInput::AutoSelect,
                         KeyCode::Char('a') => UserInput::SelectAll,
                         KeyCode::Char('w') => UserInput::CloseTab(None),
@@ -146,8 +159,8 @@ impl Interface {
                         KeyCode::Left => UserInput::HorizontalJump(jump(false, false, shift)),
                         KeyCode::Down => UserInput::VerticalJump(jump(true, false, shift)),
                         KeyCode::Up => UserInput::VerticalJump(jump(false, false, shift)),
-                        KeyCode::Backspace => UserInput::Backspace(false),
-                        KeyCode::Delete => UserInput::Backspace(true),
+                        KeyCode::Backspace => UserInput::Backspace(backspace(false, false)),
+                        KeyCode::Delete => UserInput::Backspace(backspace(true, false)),
                         KeyCode::Enter => UserInput::CarriageReturn,
                         KeyCode::Char(c) => UserInput::Insert(c),
                         KeyCode::Home => UserInput::SeekLineStart(shift),

@@ -1,8 +1,8 @@
-use crate::interface::input::Jump;
+use crate::interface::input::Backspace;
 use super::*;
 
 impl Tab {
-    fn backspace_cursor(&mut self, first_c: usize, merging_lines: bool, num_x: isize) {
+    fn backspace_cursor_internal(&mut self, first_c: usize, merging_lines: bool, num_x: isize) {
         let x_op = |x: usize| x.checked_add_signed(num_x).expect(":(");
         let this_y = self.cursors[first_c].y;
         let iter = self.cursors.iter_mut();
@@ -29,10 +29,10 @@ impl Tab {
         prev.buffer += buf.as_str();
 
         self.set_lines_dirty(prev_y);
-        self.backspace_cursor(c, true, x_add as isize);
+        self.backspace_cursor_internal(c, true, x_add as isize);
     }
 
-    pub fn backspace(&mut self, c: usize, mut num_chars: usize) {
+    pub fn backspace_cursor(&mut self, c: usize, mut num_chars: usize) {
         let simple_backspace = num_chars == 1;
 
         while self.cursors[c].x < num_chars {
@@ -69,25 +69,22 @@ impl Tab {
         line.set_dirty();
 
         self.check_line_highlighting(cursor.y);
-        self.backspace_cursor(c, false, -(num_chars as isize));
+        self.backspace_cursor_internal(c, false, -(num_chars as isize));
     }
 
-    pub fn backspace_once(&mut self, forward: bool) {
+    pub fn backspace(&mut self, backspace: Backspace) {
+        self.prepare_deletion();
+
+        // erase_selection() calls set_fully_dirty()
         if !self.erase_selection() {
-            self.prepare_deletion();
-
-            if forward {
-                let jump = Jump {
-                    forward: true,
-                    word_wise: false,
-                    select: false,
-                };
-
-                self.horizontal_jump(jump);
-            }
-
             for c in 0..self.cursors.len() {
-                self.backspace(c, 1);
+                let _ = backspace.word_wise;
+
+                if backspace.forward {
+                    self.advance_cursor_once(c, false);
+                }
+
+                self.backspace_cursor(c, 1);
             }
         }
 
@@ -99,7 +96,6 @@ impl Tab {
             return false;
         }
 
-        self.prepare_deletion();
         let range = 0..self.cursors.len();
         for c in range.rev() {
             let cursor = &mut self.cursors[c];
@@ -117,7 +113,7 @@ impl Tab {
                 let x = cursor.x;
                 cursor.sel_y += 1;
                 cursor.sel_x += x as isize;
-                self.backspace(c, x + 1);
+                self.backspace_cursor(c, x + 1);
 
                 let cursor = &mut self.cursors[c];
                 cursor.sel_x -= cursor.x as isize;
@@ -125,7 +121,7 @@ impl Tab {
 
             let cursor = &mut self.cursors[c];
             let sel_x = take(&mut cursor.sel_x);
-            self.backspace(c, -sel_x as usize);
+            self.backspace_cursor(c, -sel_x as usize);
         }
 
         // todo: do better
