@@ -481,6 +481,24 @@ impl Application {
                 self.tree_select = Some(index);
                 self.update_left(true);
             },
+            UserInput::ProjectSearch => {
+                let Some(key) = tab.key() else {
+                    alert!("No backing file for this tab");
+                    return;
+                };
+
+                let Some(trunk_id) = key.trunk() else {
+                    alert!("No project folder for this tab");
+                    return;
+                };
+
+                let maybe_text = tab.get_search_text();
+
+                if let Some(text) = maybe_text {
+                    self.forest.search(trunk_id, 0, text);
+                    self.update_left(true);
+                }
+            },
             UserInput::CarriageReturn => self.carriage_return(),
             UserInput::HorizontalJump(jump) => self.horizontal_jump(jump),
             UserInput::VerticalJump(jump) => self.vertical_jump(jump),

@@ -119,7 +119,7 @@ impl Forest {
     }
 
     pub fn reveal(&mut self, key: &FileKey) -> Option<usize> {
-        let id = key.trunk()?;
+        let id = key.trunk_ref()?;
         let trunk = self.trunk_by_id(id)?;
         trunk.reveal(&key.path())
     }
@@ -152,7 +152,7 @@ impl Forest {
     }
 
     pub fn open(&mut self, key: &FileKey) -> Option<String> {
-        let id = key.trunk()?;
+        let id = key.trunk_ref()?;
         let trunk = self.trunk_by_id(id)?;
 
         match trunk.file_text(key.path()) {
@@ -165,7 +165,7 @@ impl Forest {
     }
 
     pub fn save(&mut self, key: &FileKey, text: &str) -> Result<(), ()> {
-        let result = match key.trunk() {
+        let result = match key.trunk_ref() {
             Some(id) => match self.trunk_by_id(id) {
                 Some(trunk) => trunk.save_file(key.path(), text),
                 None => Err("Failed to find file trunk".to_string()),

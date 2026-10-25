@@ -360,19 +360,21 @@ impl Tab {
         None
     }
 
-    pub fn find_all(&mut self) {
+    pub fn get_search_text(&mut self) -> Option<String> {
         let c = self.latest_cursor();
         let cursor = &self.cursors[c];
 
-        let maybe_text = if cursor.selects() {
+        if cursor.selects() {
             let mut dst = String::new();
             self.extract_selection(c, &mut dst);
             Some(dst)
         } else {
             prompt!("{}", crate::SEARCH_PROMPT)
-        };
+        }
+    }
 
-        if let Some(text) = maybe_text {
+    pub fn find_all(&mut self) {
+        if let Some(text) = self.get_search_text() {
             self.locate(&text);
         }
     }

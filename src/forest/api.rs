@@ -19,8 +19,12 @@ impl FileKey {
         Self { trunk: None, path }
     }
 
-    pub fn trunk(&self) -> Option<&str> {
+    pub fn trunk_ref(&self) -> Option<&str> {
         self.trunk.as_deref()
+    }
+
+    pub fn trunk(&self) -> Option<TrunkId> {
+        self.trunk.as_ref().map(|id| id.clone())
     }
 
     pub fn path(&self) -> &str {

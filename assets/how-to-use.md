@@ -62,6 +62,7 @@ before quitting.
 |----------------------|--------------------------------------|
 | Ctrl + S             | Save                                 |
 | Ctrl + F             | Find in tab                          |
+| Ctrl + G             | Find in project                      |
 | Shift + Page Down    | Switch to previous tab               |
 | Shift + Page Up      | Switch to next tab                   |
 | Ctrl + W             | Close Tab                            |
