@@ -33,8 +33,8 @@ before quitting.
 | Ctrl + A             | Select All                           |
 | Ctrl + D             | Auto-Select                          |
 | Arrows               | Move all cursors                     |
-| Ctrl + Right         | Move all cursors 10 characters ahead |
-| Ctrl + Left          | Move all cursors 10 characters back  |
+| Ctrl + Right         | Move all cursors to previous word    |
+| Ctrl + Left          | Move all cursors to next word        |
 
 ## Edition
 
