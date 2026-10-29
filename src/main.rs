@@ -158,6 +158,9 @@ impl Application {
             } else if tab.has_selections() {
                 tab.unselect(None);
                 return;
+            } else if tab.discard_cursors() {
+                self.update_left(FOR_CURSORS);
+                return;
             }
         }
 

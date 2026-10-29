@@ -283,6 +283,17 @@ impl Tab {
         self.cursors.len()
     }
 
+    pub fn discard_cursors(&mut self) -> bool {
+        if self.cursor_count() <= 1 {
+            return false;
+        }
+
+        self.swap_latest_cursor(0);
+        self.cursors.truncate(1);
+        self.set_lines_redraw();
+        true
+    }
+
     pub fn cursor_desc(&mut self, c: usize, dst: &mut String) {
         let mut sel_count = 0usize;
         self.extract_selection(c, &mut sel_count);
