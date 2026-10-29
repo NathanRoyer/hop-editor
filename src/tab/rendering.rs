@@ -126,10 +126,7 @@ impl Tab {
         self.set_lines_redraw();
     }
 
-    pub fn ensure_cursor_visible(&mut self, width: usize, height: usize) {
-        let c = self.latest_cursor();
-        let cursor = &self.cursors[c];
-
+    fn cursor_visible_xy(&self, cursor: &Cursor, width: usize, height: usize) -> (bool, bool) {
         let max_x = match self.h_scroll {
             0 => width.saturating_sub(1),
             n => width.saturating_sub(2) + n,
@@ -137,21 +134,39 @@ impl Tab {
 
         let max_y = self.v_scroll + height;
 
-        let invisible_x = cursor.x < self.h_scroll || max_x <= cursor.x;
-        let invisible_y = cursor.y < self.v_scroll || max_y <= cursor.y;
+        let visible_x = self.h_scroll <= cursor.x && cursor.x < max_x;
+        let visible_y = self.v_scroll <= cursor.y && cursor.y < max_y;
 
-        if invisible_x {
+        (visible_x, visible_y)
+    }
+
+    pub fn ensure_cursor_visible(&mut self, any: bool, width: usize, height: usize) {
+        if any {
+            // is any cursor visible?
+            for cursor in &self.cursors {
+                if self.cursor_visible_xy(cursor, width, height) == (true, true) {
+                    return;
+                }
+            }
+        }
+
+        // else, make the latest one visible
+        let c = self.latest_cursor();
+        let cursor = &self.cursors[c];
+        let (visible_x, visible_y) = self.cursor_visible_xy(cursor, width, height);
+
+        if !visible_x {
             // only applies to latest cursor
             let line = &self.lines[cursor.y];
             let x = line.cells_until(cursor.x, self.tab_width_m1);
             self.h_scroll = x.saturating_sub(width / 2);
         }
 
-        if invisible_y {
+        if !visible_y {
             self.v_scroll = cursor.y.saturating_sub(height / 2);
         }
 
-        if invisible_x | invisible_y {
+        if !(visible_x & visible_y) {
             self.set_lines_redraw();
         }
     }

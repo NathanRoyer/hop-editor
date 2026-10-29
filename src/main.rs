@@ -189,11 +189,11 @@ impl Application {
         }
     }
 
-    fn ensure_cursor_visible(&mut self) {
+    fn ensure_cursor_visible(&mut self, any: bool) {
         let h = self.interface.code_height() as usize;
         let w = self.interface.code_width();
         let tab = self.tabs.current();
-        tab.ensure_cursor_visible(w, h);
+        tab.ensure_cursor_visible(any, w, h);
     }
 
     fn tree_toggle(&mut self, i: usize, index: bool) {
@@ -207,7 +207,7 @@ impl Application {
 
             if let Some(term) = bundle.searched {
                 self.tabs.current().locate(&term);
-                self.ensure_cursor_visible();
+                self.ensure_cursor_visible(true);
             }
         }
 
@@ -223,7 +223,7 @@ impl Application {
         let tab = self.tabs.current();
         let no_mod = !*tab.modified();
         tab.smart_carriage_return();
-        self.ensure_cursor_visible();
+        self.ensure_cursor_visible(true);
         self.update_tab_list(no_mod);
         self.update_left(FOR_CURSORS);
     }
@@ -236,7 +236,7 @@ impl Application {
         let tab = self.tabs.current();
         let no_mod = !*tab.modified();
         tab.smart_insert_char(c);
-        self.ensure_cursor_visible();
+        self.ensure_cursor_visible(true);
         self.update_tab_list(no_mod);
         self.update_left(FOR_CURSORS);
     }
@@ -252,7 +252,7 @@ impl Application {
         } else {
             let tab = self.tabs.current();
             tab.horizontal_jump(jump);
-            self.ensure_cursor_visible();
+            self.ensure_cursor_visible(true);
             self.update_left(FOR_CURSORS);
         }
     }
@@ -271,7 +271,7 @@ impl Application {
         } else {
             let tab = self.tabs.current();
             tab.vertical_jump(jump);
-            self.ensure_cursor_visible();
+            self.ensure_cursor_visible(true);
             self.update_left(FOR_CURSORS);
         }
     }
@@ -301,8 +301,9 @@ impl Application {
         };
 
         let tab = self.tabs.current();
-        let mut ensure_cursor_visible = false;
         let mut update_tab_list = !*tab.modified();
+        let mut ensure_cursor_visible = false;
+        let mut show_any_cursor = false;
 
         // only those could update tab styling (it could become modified)
         match event {
@@ -317,14 +318,20 @@ impl Application {
         match event {
             UserInput::Copy => tab.copy(),
             UserInput::SelectAll => tab.select_all(),
-            UserInput::Find => tab.find_all(),
             _ => ensure_cursor_visible = true,
         };
 
+        // for those, the latest cursor must be visible
+        match event {
+            UserInput::AutoSelect => tab.auto_select(),
+            _ => show_any_cursor = true,
+        };
+
+        // for those, any cursor must be visible
         match event {
             UserInput::Undo => tab.undo(),
             UserInput::Redo => tab.redo(),
-            UserInput::AutoSelect => tab.auto_select(),
+            UserInput::Find => tab.find_all(),
             UserInput::SeekLineStart(s) => tab.line_seek(true, s),
             UserInput::SeekLineEnd(s) => tab.line_seek(false, s),
             UserInput::CodeDrag(x, y) => tab.drag_to(x, y),
@@ -332,7 +339,7 @@ impl Application {
         }
 
         if ensure_cursor_visible {
-            self.ensure_cursor_visible();
+            self.ensure_cursor_visible(show_any_cursor);
         }
 
         self.update_tab_list(update_tab_list);
@@ -402,7 +409,7 @@ impl Application {
                 let _tree_select = self.tree_select.take();
                 // self.update_left(_tree_select.is_some());
                 self.update_left(FOR_CURSORS);
-                self.ensure_cursor_visible();
+                self.ensure_cursor_visible(false);
             },
             UserInput::TabClick(x) => {
                 if let Some(index) = self.interface.find_tab(x, &self.list) {
@@ -419,7 +426,7 @@ impl Application {
             UserInput::CursorClick(y) => {
                 let y = self.cursor_list_scroll + y;
                 tab.swap_latest_cursor(y as usize);
-                self.ensure_cursor_visible();
+                self.ensure_cursor_visible(false);
             },
             UserInput::CloseTab(None) => {
                 self.tabs.close(None);
