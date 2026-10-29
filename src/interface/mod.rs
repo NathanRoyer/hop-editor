@@ -197,7 +197,14 @@ impl Interface {
         for (i, (modified, tab_name)) in items.iter().enumerate() {
             queue!(self.stdout, MoveTo(tabs + cursor, 1)).unwrap();
             let cells = tab_name.chars().count() + 4;
+            let next_offset = cursor + 1 + (cells as u16);
             let mut hovered = false;
+
+            if (next_offset as usize) > self.tabs_width() {
+                queue!(self.stdout, MoveTo(tabs + cursor - 1, 1)).unwrap();
+                let _ = write!(self.stdout, "┆");
+                break;
+            }
 
             if let Some(pos) = hover_pos {
                 hovered = match pos.checked_sub(cursor) {
@@ -239,7 +246,7 @@ impl Interface {
             queue!(self.stdout, MoveTo(tabs + cursor, 2)).unwrap();
             let _ = write!(self.stdout, "{:─^1$}┴", "", cells);
 
-            cursor += 1 + (cells as u16);
+            cursor = next_offset;
         }
 
         self.erase_tab_list(cursor);
