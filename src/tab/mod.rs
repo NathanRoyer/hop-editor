@@ -276,7 +276,9 @@ impl Tab {
 
     pub fn check_cursors(&mut self) {
         self.cursors.sort();
-        self.cursors.dedup();
+
+        let cmp_cursor_pos = |c: &mut Cursor| (c.x, c.y);
+        self.cursors.dedup_by_key(cmp_cursor_pos);
     }
 
     pub fn cursor_count(&self) -> usize {
