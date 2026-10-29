@@ -120,7 +120,14 @@ impl Tab {
     pub fn smart_insert_char(&mut self, c: char) {
         self.insert_char(c);
 
-        if !autoclose_blocks() {
+        if self.cursors.len() > 1 || !autoclose_blocks() {
+            return;
+        }
+
+        // ensure cursor is at EOL
+        let cursor = &self.cursors[0];
+        let line = &self.lines[cursor.y];
+        if line.len_chars() != cursor.x {
             return;
         }
 
