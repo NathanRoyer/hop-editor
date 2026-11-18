@@ -10,7 +10,7 @@
 extensions = ['rs']
 strings-normal = [
     { start = '"', stop = '"', escape = ['n', 'r', 't', '\', "\n"], multi-line = true, strfmt-braces = true },
-    { start = "'", stop = "'", escape = ['n', 'r', 't', '\'], single-char = true },
+    { start = "'", stop = "'", escape = ['n', 'r', 't', '\', '"'], single-char = true },
     { start = 'r#"', stop = '"#', escape = ['n', 'r', 't', '\'], multi-line = true }
 ]
 
